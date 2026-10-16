@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — spec section 1 (maple_harness_spec.html).
+ * Black canvas, CRM orange accent, yellow-to-orange ring.
+ * Keep in sync with src/design/tokens.ts (enforced by tokens.test.ts).
+ */
+:root {
+  color-scheme: dark;
+
+  --bg: #0c0d10;
+  --s1: #121417;
+  --s2: #16181c;
+  --s3: #1e2126;
+  --s4: #2c3037;
+  --bd: rgba(255, 255, 255, 0.08);
+  --tx: #f4f1ed;
+  --dim: #a8a29a;
+  --faint: #6f6a64;
+  --o3: #f5b365;
+  --o4: #f29b34;
+  --o5: #f09830;
+  --o6: #e08818;
+  --y4: #f7c948;
+  --ok: #22a06b;
+  --bad: #e5484d;
+  --info: #4c8dff;
+  --ring: linear-gradient(135deg, #f7c948, #f09830 55%, #e8761a);
+
+  --ring-glow-1: rgba(240, 152, 48, 0.4);
+  --ring-glow-2: rgba(247, 201, 72, 0.2);
+  --ring-glow-3: rgba(240, 152, 48, 0.14);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-bd: var(--bd);
+  --color-tx: var(--tx);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-o3: var(--o3);
+  --color-o4: var(--o4);
+  --color-o5: var(--o5);
+  --color-o6: var(--o6);
+  --color-y4: var(--y4);
+  --color-ok: var(--ok);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+
+  --font-sans: var(--font-jakarta), "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  --radius-card: 14px;
+  --radius-panel: 12px;
+  --radius-pill: 999px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font-family:
+    var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+pre,
+.trace {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+code {
+  background: var(--s3);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+pre {
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--y4);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(240, 152, 48, 0.3);
+}
+
+/* Small chrome pieces shared by the shell and the prompt box. */
+@utility pill {
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  background: var(--s2);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+@utility send {
+  background: var(--o5);
+  color: #1a1205;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+}
+
+/*
+ * The glowing prompt-box ring: 2px gradient ring with glow. Brighter on focus,
+ * slow sweep while a run is active (reduced-motion respected).
+ */
+@utility prompt-ring {
+  background-image: var(--ring);
+  padding: 2px;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px var(--ring-glow-1),
+    0 0 26px var(--ring-glow-2),
+    0 0 70px var(--ring-glow-3);
+}
+
+@utility prompt-ring-live {
+  box-shadow:
+    0 0 0 1px var(--ring-glow-1),
+    0 0 34px rgba(247, 201, 72, 0.35),
+    0 0 90px rgba(240, 152, 48, 0.24);
+}
+
+@keyframes ring-sweep {
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .prompt-ring-live {
+    background-size: 200% 200%;
+    animation: ring-sweep 6s ease-in-out infinite;
+  }
+}

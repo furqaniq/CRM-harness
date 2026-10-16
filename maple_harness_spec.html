@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maple Harness: build spec</title>
+<style>
+:root{color-scheme:dark;--bg:#0C0D10;--s1:#121417;--s2:#16181C;--s3:#1E2126;--s4:#2C3037;--bd:rgba(255,255,255,.08);--tx:#F4F1ED;--dim:#A8A29A;--faint:#6F6A64;--o3:#F5B365;--o4:#F29B34;--o5:#F09830;--o6:#E08818;--y4:#F7C948;--ok:#22A06B;--bad:#E5484D;--info:#4C8DFF;--ring:linear-gradient(135deg,#F7C948,#F09830 55%,#E8761A)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.6 "Plus Jakarta Sans",Inter,system-ui,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:34px;line-height:1.15;margin:0 0 8px}h2{font-size:22px;margin:48px 0 12px;padding-top:8px;border-top:1px solid var(--bd)}h3{font-size:16px;margin:20px 0 6px;color:var(--o3)}
+p{margin:8px 0;max-width:78ch}.dim{color:var(--dim)}code,pre{font-family:ui-monospace,"JetBrains Mono",Menlo,monospace;font-size:12.5px}
+code{background:var(--s3);padding:1px 6px;border-radius:5px}pre{background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:14px;overflow:auto;white-space:pre-wrap}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--o3);font-weight:600;background:var(--s1)}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:12px}.tw table{margin:0}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.btn{background:var(--o5);color:#1a1205;border:0;border-radius:999px;padding:9px 18px;font:600 13px inherit;font-family:inherit;cursor:pointer}.btn:hover{background:var(--o4)}.btn:focus-visible,.ta:focus-visible{outline:2px solid var(--y4);outline-offset:2px}
+.note{background:var(--s2);border:1px solid var(--bd);border-left:3px solid var(--o5);border-radius:10px;padding:10px 14px;margin:14px 0}
+nav{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0}nav a{color:var(--dim);text-decoration:none;border:1px solid var(--bd);border-radius:999px;padding:3px 11px;font-size:12.5px}nav a:hover{color:var(--tx);border-color:var(--o5)}
+/* design preview */
+.sw{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.sw div{flex:1 1 118px;border-radius:10px;padding:34px 10px 8px;font-size:11.5px;border:1px solid var(--bd)}
+.mock{display:grid;grid-template-columns:64px 190px 1fr;min-height:560px;border:1px solid var(--bd);border-radius:16px;overflow:hidden;background:var(--bg);margin:14px 0}
+.rail{background:var(--s3);display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 0;font-size:10px;color:var(--dim)}
+.rail .logo{width:34px;height:34px;border-radius:9px;background:var(--o5);color:#1a1205;font-weight:800;display:grid;place-items:center;margin-bottom:8px;font-size:16px}
+.rail i{font-style:normal;width:52px;text-align:center;padding:7px 0;border-radius:9px}.rail i.on{background:rgba(240,152,48,.16);color:var(--o3)}
+.pan{background:var(--s1);border-right:1px solid var(--bd);padding:14px 12px;display:flex;flex-direction:column;gap:10px;font-size:12.5px;color:var(--dim)}
+.pan b{color:var(--tx);font-size:16px}.srch{background:#17191D;border:1px solid var(--bd);border-radius:9px;padding:7px 10px}.sel{background:var(--s4);color:var(--tx);border-radius:9px;padding:7px 10px}
+.tok{margin-top:auto}.bar{height:5px;border-radius:9px;background:var(--s4);margin:6px 0}.bar span{display:block;height:100%;width:47%;border-radius:9px;background:var(--o5)}
+.main{display:flex;flex-direction:column;padding:14px 18px;gap:12px;min-width:0}
+.bar2{display:flex;justify-content:space-between;color:var(--dim);font-size:12.5px}.pill{border:1px solid var(--bd);border-radius:999px;padding:2px 10px;background:var(--s2);font-size:12px;color:var(--dim)}
+.me{align-self:flex-end;background:var(--s3);border-radius:14px 14px 4px 14px;padding:9px 14px;max-width:80%}
+.tr{background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;font-family:ui-monospace,monospace;font-size:12px;color:var(--dim)}.tr .ok{color:var(--ok)}.tr .run{color:var(--y4)}
+.lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;font-family:inherit}.lane{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:8px 10px;font-size:12px}.lane b{color:var(--tx)}.lane.live{border-color:rgba(247,201,72,.5)}
+.ans{font-size:14px}
+.ring{background:var(--ring);padding:2px;border-radius:18px;box-shadow:0 0 0 1px rgba(240,152,48,.4),0 0 26px rgba(247,201,72,.2),0 0 70px rgba(240,152,48,.14);margin-top:auto}
+.ring>div{background:var(--s2);border-radius:16px;padding:12px 14px}.ph{color:var(--faint);min-height:44px}
+.ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px}.ctl .sp{flex:1}.send{background:var(--o5);color:#1a1205;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:800}
+.row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.card{background:var(--s2);border:1px solid var(--bd);border-radius:14px;padding:14px}.card .n{font-size:26px;font-weight:700}.card small{color:var(--dim)}
+@media(max-width:760px){.mock{grid-template-columns:56px 1fr}.pan{display:none}.lanes{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:no-preference){.ring{background-size:200% 200%;animation:sw 6s ease-in-out infinite}@keyframes sw{50%{background-position:100% 50%}}}
+</style></head><body><div class="wrap">
+
+<div class="top"><div><h1>Maple Harness: build spec</h1>
+<p class="dim">An agent harness for the Maple mortgage CRM. Give this page to your coding agent; the design preview below is the visual target.</p></div>
+<button class="btn" id="copy">Copy spec as text</button></div>
+<div class="note"><b>The tech stack is intentionally not part of this spec.</b> Choose it in plan mode with the coding agent. Constraints that must hold whatever you choose: provider-agnostic, self-hostable, browser UI with streaming, embeddable as a widget inside the CRM, and agents/skills/routines stored as plain files.</div>
+<nav><a href="#design">Design</a><a href="#how">How to work</a><a href="#rules">Behavior rules</a><a href="#arch">Capabilities</a><a href="#agents">Subagents</a><a href="#skills">Skills</a><a href="#loops">Loops and routines</a><a href="#sim">Simulator</a><a href="#lab">Test Lab</a><a href="#ms">Milestones</a><a href="#cfg">Tunable defaults</a><a href="#in">Inputs needed</a></nav>
+
+<main id="spec">
+
+<h2 id="design">1. Design target</h2>
+<p>Black canvas, the CRM's orange as the accent, and a yellow-to-orange glowing ring around the prompt box. Colors marked CRM were sampled from the dashboard screenshot.</p>
+<div class="sw">
+<div style="background:#0C0D10">bg <code>#0C0D10</code></div><div style="background:#16181C">surface <code>#16181C</code></div><div style="background:#1E2126">CRM rail <code>#1E2126</code></div><div style="background:#2C3037">hover <code>#2C3037</code></div>
+<div style="background:#F09830;color:#1a1205">CRM orange <code style="background:#0003">#F09830</code></div><div style="background:#F5B365;color:#1a1205">CRM light <code style="background:#0003">#F5B365</code></div><div style="background:#F7C948;color:#1a1205">ring yellow <code style="background:#0003">#F7C948</code></div><div style="background:#F4F1ED;color:#1a1205">text <code style="background:#0003">#F4F1ED</code></div></div>
+
+<div class="mock" aria-label="Design preview">
+<div class="rail"><div class="logo">M</div><i class="on">Home</i><i>Agents</i><i>Skills</i><i>Loops</i><i>MCP</i><i>Models</i><i>Runs</i><i>Tests</i></div>
+<div class="pan"><b>Quick access</b><div class="srch">Search all pages</div><div class="sel">Chat</div><div>Agents</div><div>Routines</div><div style="margin-top:6px;color:var(--faint)">Recently viewed</div><div>Morning check</div><div>Leads agent</div>
+<div class="tok"><div>Your tokens used <b style="font-size:12.5px">1,310 / 2,811</b></div><div class="bar"><span></span></div><div style="font-size:11.5px">Company tokens 25%</div></div></div>
+<div class="main"><div class="bar2"><span>Chat</span><span><span class="pill">Default branch</span> <span class="pill">Owner mode on</span></span></div>
+<div class="me">Morning check: follow-ups due this week, contacts with a valid phone, and Parker's leads by status.</div>
+<div class="tr"><span class="ok">✓</span> Planned 3 independent tasks<div class="lanes">
+<div class="lane live"><b>Leads</b><br><span class="run">● running</span> 2 tools 1.4s</div>
+<div class="lane"><b>Contacts</b><br><span class="ok">✓ done</span> 1 tool 0.6s</div>
+<div class="lane"><b>Reports</b><br><span class="ok">✓ done</span> 1 tool 0.9s</div></div></div>
+<div class="ans"><b>Follow-ups due this week: 4.</b> 1,180 of 1,310 contacts have a valid phone. Parker has 12 leads: 5 New, 4 Contacted, 3 Docs pending.<br><span class="dim">Checked 3 sources. Nothing changed.</span></div>
+<div class="ring"><div><div class="ph">Ask Maple, or type / for skills and @ for an agent</div>
+<div class="ctl"><span class="pill">Attach</span><span class="pill">@ agent</span><span class="pill">/ skill</span><span class="sp"></span><span class="pill">Worker model</span><span class="pill">Auto</span><span class="send">↑</span></div></div></div></div></div>
+
+<div class="row3">
+<div class="card"><small>Home stat cards</small><div class="n">31</div><small>runs today, with an orange icon tile, caption and thin progress bar, like the CRM</small></div>
+<div class="card"><small>Prompt box</small><p style="margin:4px 0">2px gradient ring with glow. Brighter on focus; slow sweep while a run is active (respect reduced motion). Send turns into Stop during a run.</p></div>
+<div class="card"><small>Trace</small><p style="margin:4px 0">Spinner then check with duration ("Checked your leads 0.3s"). Parallel subagents sit side by side as lanes. Raw tool names only behind an Advanced toggle.</p></div></div>
+<p class="dim">Layout: 64px icon rail, 260px collapsible panel with search (Ctrl K), recent items and the token meter, top bar with branch switch, language and avatar. Type: a friendly geometric sans for UI, a monospace for traces and JSON, sentence case everywhere. Pages: Home/Chat, Agents, Skills, Loops and Routines, MCP, Providers, Runs, Test Lab, Settings. Also an embeddable compact mode with the same prompt box.</p>
+
+<h2 id="how">2. How to work</h2>
+<ol>
+<li>Read this page, both workbooks in <code>fixtures/</code> and the screenshot in <code>design/</code>. Then enter plan mode: propose the stack, architecture, milestone plan and risks. Wait for approval.</li>
+<li><b>One milestone at a time.</b> At the end of each, demo it, run its tests, commit, and stop for review. Do not start the next milestone without a go-ahead.</li>
+<li>Measure from the start: a minimal test runner arrives in M3, so every later milestone reports pass rates.</li>
+<li>No hard-coding answers to test prompts, no special-casing test IDs, no editing the expected-behavior columns. Report honest pass/fail numbers.</li>
+<li>Anything stubbed goes under "Known gaps" in the README.</li></ol>
+
+<h2 id="rules">3. Behavior rules (from the test workbooks)</h2>
+<p>They go into the base system prompt and are enforced in code wherever code can enforce them.</p>
+<div class="tw"><table><tr><th>#</th><th>Rule</th><th>Proved by</th></tr>
+<tr><td>R1</td><td>Lead with the answer. No "let me check" preamble.</td><td>INT-01, INT-10</td></tr>
+<tr><td>R2</td><td>Never guess numbers, names, ids or dates. Empty or failed lookups are stated plainly.</td><td>INT-16, INT-23, RPT-*</td></tr>
+<tr><td>R3</td><td>Act immediately on clear requests (no "are you sure?"). Otherwise ask one short question naming what is missing.</td><td>LEAD-05/06, GEN-02, SEND-05</td></tr>
+<tr><td>R4</td><td>Resolve entities before writing. Zero matches: say so. Several (two San Diego branches): ask, never pick silently.</td><td>LEAD-12, PSM-07, INT-25</td></tr>
+<tr><td>R5</td><td>Only real company values for statuses, sources, loan types, stages. Otherwise list the valid ones.</td><td>LEAD-09/18, INT-09, SOC-15</td></tr>
+<tr><td>R6</td><td>Never delete, archive, remove or merge, and no workarounds (fake "deleted" status, blanking, unsubscribing). Name the record, say it must be done in the CRM.</td><td>all refuse tests, GEN-01, PAR-12</td></tr>
+<tr><td>R7</td><td>Report from a read-back after every write, including linked-record effects. Never claim a change that did not land.</td><td>INT-05, CON-09, CAMP-08, PAR-15</td></tr>
+<tr><td>R8</td><td>Be honest about capability gaps (AI agent or voice config, users, roles, templates, tags, file exports, social connect/publish/schedule, company settings) and offer the nearest real option.</td><td>INT-03/17/21, USR-04, SOC-29/30</td></tr>
+<tr><td>R9</td><td>Duplicate guards: check before create, collapse identical in-flight creates, block an identical send within 10 minutes.</td><td>BR-04, CON-05, PAR-17, SEND-04</td></tr>
+<tr><td>R10</td><td>Campaigns, drips, pipelines, workflows, automations are created off/draft with nobody enrolled. Say draft or live. Enable, publish or send only when asked.</td><td>CAMP-06, DRIP-04, AUTO-10</td></tr>
+<tr><td>R11</td><td>Never message unsubscribed contacts. Never send invented copy.</td><td>SEND-07, INT-30/42</td></tr>
+<tr><td>R12</td><td>Independent work in parallel, dependent work in order, one failure never blocks the rest, labelled answers in the order asked, no data bleed.</td><td>PAR-*, PSM-*</td></tr>
+<tr><td>R13</td><td>Social is text drafts only: no invented rates, offers, stats, testimonials, links or NMLS numbers; no CRM personal data in posts; X posts at most 280 characters.</td><td>SOC-*, PSM-*</td></tr>
+<tr><td>R14</td><td>No internal ids, raw tool names or stack traces in user text. Reply in the user's language. This company's data only. Say when a view is limited by role or ownership.</td><td>INT-40, GEN-03/05, CONV-02</td></tr></table></div>
+
+<h3>Base persona (ship as an editable file)</h3>
+<pre>You are Maple Assistant inside the Maple CRM for a mortgage company.
+Answer first, in plain words, in the user's language. Never show ids or tool names.
+Never guess; look it up. If a lookup is empty or fails, say so and say what you checked.
+When the request is clear, do it now. If something required is missing, ask ONE short
+question naming it. Find the exact record first; zero matches: say so; several: ask which.
+Use only real values from the company's lists. After any change, read the record back and
+say what changed, including linked records. New campaigns, drips, pipelines, workflows and
+automations start as drafts/off with nobody enrolled; say which. Send, publish or enable only
+when asked, with wording you were given. Never message unsubscribed contacts.
+You cannot delete, archive, remove or merge: say it has to be done in the CRM, name the record,
+offer to list matches, and never work around it. If you have no tool for something, say so and
+offer the nearest real option. For several tasks: independent ones together, dependent ones in
+order, each under its own label; if one fails, finish the rest and say which part failed.
+Social text is drafts only with placeholders, never invented rates, offers, stats, testimonials
+or personal data. Say when results are limited to the user's own records or branch.</pre>
+
+<h2 id="arch">4. Capabilities (stack-agnostic)</h2>
+<div class="tw"><table><tr><th>Area</th><th>Requirements</th></tr>
+<tr><td>Agent loop</td><td>Provider-agnostic: assemble context, stream the model, run tool calls (parallel when independent), repeat until final answer or a limit (steps, time, tokens, cost). Cancel any time. Usable as a library by routines, subagents and tests.</td></tr>
+<tr><td>Events and trace</td><td>One typed event stream feeds the UI, run log and Test Lab. Parallel calls share a step id so the trace proves they started together. Every event carries run id and parent run id.</td></tr>
+<tr><td>Tools and policy</td><td>Each tool is classed read, write, live-effect or destructive (inferred from name and MCP hints, editable). Policy per workspace, agent and routine: auto, ask or deny. Defaults: read auto, write auto, live-effect ask (auto only with Owner mode in interactive chat, always denied unattended unless allowlisted), destructive deny. A global deny pattern for <code>delete, remove, archive, destroy, merge</code> beats every allow list.</td></tr>
+<tr><td>Tool scoping</td><td>About 300 CRM tools: never in one context. Each subagent sees only its list. Orchestrator gets built-ins plus a few reads, and a tool-search built-in.</td></tr>
+<tr><td>Large results</td><td>Over a size limit, store as an artifact, return a summary plus handle, and offer a read-artifact tool. Agents must say how many items they actually covered, never "all" from a sample.</td></tr>
+<tr><td>Subagents</td><td><code>spawn_agent</code> and <code>spawn_agents</code> (batch, concurrent). Fresh context per child: system prompt, skills, task, inputs only. Structured result: status (ok, partial, failed, needs_input), summary, data, writes with verified flag, errors, optional single question. Depth and concurrency limits, per-child budgets, no privilege widening. Planner builds a task graph with dependencies; siblings survive each other's failures. Agents refer to model roles (orchestrator, worker, verifier, writer, judge), never to model ids.</td></tr>
+<tr><td>Write coordinator</td><td>Per-record locking and idempotency keys: identical in-flight creates collapse to one, several changes to one record serialize and none is lost. 10-minute identical-send guard. Automatic read-after-write verification via a per-tool "verify with" mapping.</td></tr>
+<tr><td>Skills</td><td>Folder per skill with a description and body. Only names and descriptions sit in the prompt; the body loads on demand or is pre-injected per agent. UI to list, edit, test, import and export.</td></tr>
+<tr><td>MCP</td><td>Stdio, streamable HTTP and legacy SSE transports; none, bearer, header and OAuth auth; import <code>.mcp.json</code>. Add, test, discover, review tools (enable, class, display labels, verify-with), assign to agents in a matrix. Health checks, reconnect, timeouts, rate limits, plain-language error surfacing, a tool console for manual calls. A disabled "Maple CRM" entry ships preconfigured.</td></tr>
+<tr><td>Providers</td><td>Anthropic, OpenAI, Gemini and any OpenAI-compatible endpoint (hosted or local). Add, test (including a tool-call probe), fetch models, set capability flags and prices, map roles to models, fallback chains. Cost and token accounting per run, agent and provider; spend caps; feeds the token meter.</td></tr>
+<tr><td>Context</td><td>Auto-compaction near 75% of the window, keeping the task, resolved entities and open questions. Session memory of resolved references so "that campaign" works, and asks which when several were just shown.</td></tr>
+<tr><td>Security and audit</td><td>Secrets encrypted at rest and never sent to the browser. Audit log of tool calls, approvals, config changes and routine runs, with secrets redacted. Owner login for v1; respect the CRM user's own permissions. Global kill switch.</td></tr></table></div>
+
+<h2 id="agents">5. Subagents (seed set)</h2>
+<p>Stored as files with: name, display name, description, model role, tool list (globs allowed), skills, can-spawn flag, limits, policy, then the prompt body. Each agent gets only its own tools; tool names are those in the workbooks.</p>
+<div class="tw"><table><tr><th>Agent</th><th>Task type</th><th>Tool groups</th></tr>
+<tr><td><code>maple</code></td><td>Front door and orchestrator. Answers directly, asks one question, or spawns specialists in parallel. Composes the labelled final answer.</td><td>built-ins, get_company, list_users</td></tr>
+<tr><td><code>leads</code></td><td>Leads, direct leads, loan applications: search, create, update, status, source, assign, transfer, history, follow-ups, counts, export</td><td>lead_*, direct_lead_*, loan_form_*</td></tr>
+<tr><td><code>contacts</code></td><td>Contacts and groups, with duplicate checks, tags, subscribe state, counts</td><td>customer_*, contact_group_*</td></tr>
+<tr><td><code>outreach</code></td><td>Pipelines, campaigns, drips: always created off, steps, enrollment, analytics</td><td>pipeline_*, campaign_*, drip_*</td></tr>
+<tr><td><code>automations</code></td><td>Automations and workflows: explain, debug failed runs, build drafts, duplicate, export/import; publish or pause only on request</td><td>automation_*, workflow_*</td></tr>
+<tr><td><code>inbox</code></td><td>Conversations, SMS/email/voicemail sends, email and voicemail campaigns, templates</td><td>conversation_*, send_*, email_*, voicemail_*, template_*</td></tr>
+<tr><td><code>schedule</code></td><td>Tasks, bookings, booking forms, Google Calendar</td><td>task_*, booking_*, calendar_*</td></tr>
+<tr><td><code>willa</code></td><td>Social writer: posts, captions, hashtags, plans, tone and length edits, translation, image ideas. Text drafts only. No lead or contact tools.</td><td>brand, branch, company, content, media, stock photos, render_design</td></tr>
+<tr><td><code>reports</code></td><td>Dashboards, health, stats, token usage, audit log, weekly report. Read-only.</td><td>read tools across modules</td></tr>
+<tr><td><code>admin</code></td><td>Branches, users, roles, company info. Cannot create users or assign roles.</td><td>branch_*, user_*, role_*</td></tr>
+<tr><td><code>verifier</code></td><td>Read-after-write checks: intended changes in, matches and diffs out</td><td>read tools only</td></tr>
+<tr><td><code>researcher</code></td><td>Cited web research; off until a search MCP exists, and says so plainly</td><td>from MCP</td></tr>
+<tr><td><code>vera</code></td><td>Video generator placeholder: reports "not available yet"</td><td>none</td></tr>
+<tr><td><code>qa</code></td><td>Judges a transcript and trace for the Test Lab</td><td>run data</td></tr></table></div>
+<p>Routing: single-module questions go to one specialist or are answered directly. Multi-part requests spawn specialists together. Social plus CRM spawns <code>willa</code> and the CRM specialist together, except when the post depends on a lookup (a branch announcement): lookup first. The workbooks use older persona names (Sophia, Eleanor); fold them into <code>maple</code>. Display names stay editable.</p>
+
+<h2 id="skills">6. Skills (seed set)</h2>
+<div class="tw"><table><tr><th>Skill</th><th>Core content</th></tr>
+<tr><td><code>soul-maple</code></td><td>Rules R1 to R14, voice, no jargon</td></tr>
+<tr><td><code>entity-resolution</code></td><td>Search before write; 0 or many matches; traps: same-named branches, a lead and contact sharing one record, people who do not exist, "Thursday" on a Thursday</td></tr>
+<tr><td><code>validate-against-company-lists</code></td><td>Check statuses, sources, loan types, stages first; refuse invented values and suggest the closest real one</td></tr>
+<tr><td><code>never-delete</code></td><td>Exact refusal wording, named record, forbidden workarounds, offer to list matches</td></tr>
+<tr><td><code>verify-after-write</code></td><td>Read back, compare, report from the read-back, mention linked records, admit mismatches</td></tr>
+<tr><td><code>parallel-fanout</code></td><td>Splitting requests, dependencies, error isolation, labelled sections, follow-up reference resolution</td></tr>
+<tr><td><code>safe-create</code></td><td>Draft/off defaults, no enrollment, say draft vs live, known limits (a draft drip cannot be started by tool)</td></tr>
+<tr><td><code>messaging-safety</code></td><td>Given wording only, skip unsubscribed, duplicate guard, report exactly who got what</td></tr>
+<tr><td><code>social-compliance</code></td><td>No guaranteed approval or "lowest rates"; only user-supplied rates plus a disclosure reminder; Equal Housing and NMLS placeholders unless in the CRM; no discriminatory targeting; no fake testimonials; no personal data; no unproven competitor claims; no invented stats</td></tr>
+<tr><td><code>social-writing</code></td><td>Platform styles and limits, tone and length edits, translation, image idea with alt text, cannot publish or schedule</td></tr>
+<tr><td><code>automation-builder</code></td><td>Node types first, build as draft, validate, explain plainly, diagnose from run history, never touch credentials</td></tr>
+<tr><td><code>report-writer</code></td><td>Answer-first, every number from a tool, state range and scope, flag suspicious zeros</td></tr>
+<tr><td><code>large-results</code></td><td>Page, prefer compact tools, state coverage honestly</td></tr>
+<tr><td><code>honest-limits</code></td><td>The R8 gap list with wording and the best real alternative for each</td></tr>
+<tr><td><code>qa-cleanup</code></td><td>List test-prefixed records across modules for manual removal</td></tr>
+<tr><td><code>multilingual</code></td><td>Reply in the user's language, keep names and numbers exact</td></tr>
+<tr><td><code>scope-awareness</code></td><td>Say when results are limited to the user's records or branch</td></tr></table></div>
+
+<h2 id="loops">7. Loops and routines</h2>
+<h3>Routines: saved, named, triggerable work</h3>
+<p>A routine is a prompt, an agent, skills, a policy, a trigger, an output and a run history. Triggers: manual, cron (timezone defaults to the CRM company timezone), interval, webhook, CRM event, after another routine. Modes: attended (can ask the user) and unattended (cannot ask; live-effect actions denied unless allowlisted). Every routine has dry run, per-run budget, an overlap lock, a missed-run policy (skip, run once, catch up), retries with backoff, auto-pause after repeated failures, a run key to prevent double-acting, a next-fire preview, and a full stored trace. All seed routines ship disabled.</p>
+<h3>Loops: repeat until done</h3>
+<p><b>Interval</b> (every 15 minutes, check unanswered conversations and draft replies), <b>goal</b> (plan, act, verify until a stop condition holds, such as an automation draft that validates), and <b>watch</b> (poll a cheap read; when it flips, act once). Each has max iterations, cost and time, a stop condition, an on-limit action, a visible countdown and a Stop button. Start from <code>/loop</code> in the prompt box.</p>
+<div class="tw"><table><tr><th>Seed routine</th><th>When</th><th>What it does</th><th>Policy</th></tr>
+<tr><td><code>morning-check</code></td><td>Weekdays 08:00</td><td>Five-way fan-out digest: follow-ups due, valid-phone contacts, first campaign's responders, an agent's lead counts, contact stats</td><td>read-only</td></tr>
+<tr><td><code>weekly-report</code></td><td>Monday 09:00</td><td>New leads, tasks done, appointments, conversations</td><td>read-only</td></tr>
+<tr><td><code>stale-lead-nudges</code></td><td>Daily</td><td>Find leads quiet 3+ weeks, judge, draft a message and create a follow-up task. Never sends.</td><td>tasks yes, sends no</td></tr>
+<tr><td><code>failed-automation-watch</code></td><td>Hourly</td><td>Report new failed runs with failed step and error; flag credential problems</td><td>read-only</td></tr>
+<tr><td><code>unanswered-conversations</code></td><td>Every 30 min, business hours</td><td>Conversations waiting on us, and which are in the user's scope</td><td>read-only</td></tr>
+<tr><td><code>data-hygiene</code></td><td>Weekly</td><td>Duplicate branches and contacts, test-prefixed records, stale drafts</td><td>read-only</td></tr>
+<tr><td><code>qa-regression</code></td><td>Nightly</td><td>Safe Test Lab subset on the simulator, pass/fail delta</td><td>simulator only</td></tr></table></div>
+
+<h2 id="sim">8. CRM simulator</h2>
+<p>A mock CRM tool server with the tool names from section 5, realistic seeded data, and the real CRM's constraints and bugs behind switches, with reset and snapshot/restore. Sends only write to an outbox, never out. Quirks: company lists reject invalid values; no delete tools exist; several branches named San Diego and a transfer to a branch with no agent is refused; a lead and a contact can share one record; unsubscribed contacts vanish from search; tags need existing ids and there is no tag-create tool; the automation list is about 270 KB; the branch list tool fails intermittently; role limits what a user sees (owner 22 conversations, normal user 15); a draft drip cannot be started; a campaign step update can write into the wrong field; duplicate-send guard and token balance; per-user permission gaps such as "cannot create a pipeline".</p>
+
+<h2 id="lab">9. Test Lab</h2>
+<p><b>Import</b> every test sheet from both workbooks into rows of: id, module, type, prompt, expected tools, expected behavior, fails-if, depends-on, safety class, original status, comments. Keep the original columns and add result, evidence and run id.</p>
+<p><b>Safety classes.</b> "Safe (read only)" and "Safe (QA record)" run by default. Changes to real records, live effects, real sends and external-platform tests are skipped unless explicitly opted in, and only against the simulator or a confirmed test company. Live runs show a red banner and require typing the company name. Rows marked "same chat, directly after" share one conversation. Modes: run selected, run module, run all safe, re-run failed.</p>
+<p><b>Grading, two layers, both shown.</b> (1) Deterministic checks on the trace and text: tool called or not called (any refuse row fails on a destructive attempt or workaround), parallel calls share a step and dependent ones do not, no confirmation question on clear writes, first line is the finding, X post at most 280 characters, hashtag counts, created campaigns are off with Day 1 and no people, no internal ids, language matches, read-back present. (2) An LLM judge given the prompt, answer, trace summary, expected behavior and fails-if, returning pass, partial or fail with quoted evidence.</p>
+<p><b>Judge calibration.</b> Build a gold set of at least 40 rows labelled by your human testers from the existing Pass/Fail/Partial results. Show judge agreement per module and do not treat judge output as authoritative below 90% agreement. Always show disagreements for human review.</p>
+<p><b>Output.</b> Results table with filters, diff against the previous run, pass rate per module, a regressions banner, export to xlsx and JSON. <b>Regression pack</b> (always run, simulator quirks on): INT-05, INT-44/BR-04, LEAD-12/PSM-07, CON-08/GRP-07, CON-09/10 and SEND-07, CAMP-08, DRIP-06, AUTO-07, CONV-02/06 and INT-14, BR-01, INT-40.</p>
+<p><b>Targets.</b> Simple one-lookup answers in about 12 seconds at the median, five-way parallel requests in about 45 seconds, no timeouts on the eight-way stress case (PAR-27).</p>
+
+<h2 id="ms">10. Milestones (gated: demo, test, commit, stop)</h2>
+<div class="tw"><table><tr><th>M</th><th>Scope</th><th>Done when</th></tr>
+<tr><td>M0</td><td>Project scaffold, CI, design tokens, app shell (rail, panel, top bar, token meter)</td><td>Shell matches section 1; screenshot saved to <code>docs/</code></td></tr>
+<tr><td>M1</td><td>Provider layer and UI, core loop, streaming chat, glowing prompt box</td><td>Add and test a provider, stream a chat, stop mid-run, token meter updates; scripted mock model in unit tests</td></tr>
+<tr><td>M2</td><td>MCP manager and UI, tool registry, policy engine, artifacts, CRM simulator</td><td>Simulator and a remote server connect; deny pattern blocks delete tools; a 270 KB result is handled</td></tr>
+<tr><td>M3</td><td>Subagent runner, planner, write coordinator, read-after-write, trace lanes, <b>minimal test runner</b></td><td>PAR-04 shows parallel lanes in one step; PAR-17 makes one record; INT-05 reported correctly; first pass rates reported</td></tr>
+<tr><td>M4</td><td>Skills system, seed agents, skills and persona, Agents and Skills pages</td><td>All seed files load and validate; <code>/skill</code> and <code>@agent</code> work</td></tr>
+<tr><td>M5</td><td>Loops, routines, scheduler, history, dry run, kill switch</td><td>Seed routines run on schedule and on demand; unattended runs cannot perform live-effect actions; overlap and missed-run rules tested</td></tr>
+<tr><td>M6</td><td>Full Test Lab: workbook import/export, all checks, judge, calibration, regression pack</td><td>Row counts match the workbooks; "run all safe" completes on the simulator; xlsx export works</td></tr>
+<tr><td>M7</td><td>Hardening: auth, secrets, budgets, audit log, embed mode, packaging, docs</td><td>Clean-clone setup works; secrets never reach the browser; embed demo works; README covers MCP, providers, agents, skills, routines</td></tr></table></div>
+<p>Quality bar: strict typing, unit tests for the loop, policy, coordinator and scheduler, integration tests against the simulator, and an architecture doc with a sequence diagram of a parallel subagent run.</p>
+
+<h2 id="cfg">11. Tunable defaults (one config file, shown in Settings)</h2>
+<div class="tw"><table><tr><th>Setting</th><th>Start value</th><th>Setting</th><th>Start value</th></tr>
+<tr><td>Subagent depth</td><td>2</td><td>Max parallel subagents</td><td>6</td></tr>
+<tr><td>Artifact threshold</td><td>20 KB</td><td>Compaction trigger</td><td>75% of window</td></tr>
+<tr><td>Child budget</td><td>12 steps, 90 s, 60k tokens</td><td>Send duplicate window</td><td>10 minutes</td></tr>
+<tr><td>Routine auto-pause</td><td>3 consecutive failures</td><td>Loop limits</td><td>8 iterations, $0.30, 15 min</td></tr></table></div>
+<p class="dim">These are guesses until real runs exist. Record the values you changed and why in the README.</p>
+
+<h2 id="in">12. Inputs to gather before M2</h2>
+<ul>
+<li>Real tool definitions (names, argument schemas, sample responses) from the live Maple CRM MCP server, saved to <code>fixtures/tools/</code>. The simulator must match them, not guess.</li>
+<li>The current <code>SOUL.maple.md</code>, to diff against the base persona above.</li>
+<li>The role and permission matrix (owner, loan officer, processor) for the scope tests.</li>
+<li>Company timezone and a dedicated test company or branch for any live runs.</li>
+<li>The human Pass/Fail/Partial labels already in the workbooks, for judge calibration.</li></ul>
+
+<h2>13. Do not</h2>
+<ul><li>Load all CRM tools into one agent's context.</li><li>Give any agent a delete, remove, archive or merge tool, even if a server offers one.</li><li>Let unattended runs send, publish or enable anything that is not explicitly allowlisted.</li><li>Share conversation history between subagents, or let two writers hit one record without the coordinator.</li><li>Show ids, raw tool names, secrets or stack traces in normal user-facing text.</li><li>Run live-CRM or real-send tests without the explicit opt-in.</li><li>Hard-code test answers or special-case test IDs.</li></ul>
+</main></div>
+<script>document.getElementById('copy').onclick=function(){var b=this,t=document.getElementById('spec').innerText;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){b.textContent='Copied'},function(){var r=document.createRange();r.selectNodeContents(document.getElementById('spec'));var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected, press Ctrl+C'});setTimeout(function(){b.textContent='Copy spec as text'},2500)}</script>
+</body></html>
