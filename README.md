@@ -15,6 +15,9 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
+**Status: M0 complete.** Implemented so far: scaffold, design tokens, app shell, CI, tests.
+Everything else lands with its milestone below.
+
 ## Setup
 
 ```bash
@@ -39,9 +42,10 @@ pnpm dev        # http://localhost:3000
 
 ```
 src/
-  app/          Next.js routes, layout, design tokens (globals.css)
-  core/         Agent loop, events, tools, policy, planner, routines (library)
+  app/          Next.js routes inside the (shell) route group, layout, design tokens (globals.css)
+  components/   shell (rail, panel, top bar, token meter) and chat UI
   design/       Design tokens mirrored in TS, enforced by tokens.test.ts
+  core/         Agent loop, events, tools, policy, planner, routines — added from M1
 ```
 
 Spec assets the plan expects (`fixtures/`, `design/`, workbooks, `SOUL.maple.md`) are **not in the

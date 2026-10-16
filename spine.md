@@ -10,7 +10,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | # | Step | Status | Commit | Pushed |
 |---|------|--------|--------|--------|
 | S1 | git init, scaffold, CI, design tokens, lint/typecheck, README | [x] | `e983cd8` | yes |
-| S2 | App shell (rail, panel, top bar, token meter) | [ ] | | |
+| S2 | App shell (rail, panel, top bar, token meter) | [x] | `c2d562d` | pending |
 | S3 | Provider abstraction + model config | [ ] | | |
 | S4 | Core agent loop (stream, parallel tools, limits, cancel) | [ ] | | |
 | S5 | Streaming chat UI, glowing prompt box, stop, token meter | [ ] | | |
@@ -40,7 +40,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 ## Milestone gates
 
-- [ ] M0 complete — shell matches spec section 1, screenshot saved to `docs/`
+- [x] M0 complete — shell matches spec section 1, screenshot saved to `docs/` (`docs/m0-shell.png`, `docs/m0-shell-mobile.png`)
 - [ ] M1 complete — add/test provider, stream chat, stop mid-run, token meter; scripted mock model
 - [ ] M2 complete — simulator + remote server connect; deny pattern blocks delete; 270 KB result handled
 - [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
@@ -61,3 +61,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 - S1 done (`e983cd8`, pushed): Next.js 16 scaffold, design tokens, lint/typecheck/test/build all
   green, GitHub Actions CI, README with Known gaps. Repo `furqaniq/CRM-harness` created via composio
   GitHub toolkit.
+- S2 done (`c2d562d`): app shell per spec section 1 — 64px rail, 260px panel with Ctrl K search and
+  token meter, top bar with branch/language/owner mode, glowing prompt box, nine routes (eight are
+  placeholders), responsive at 760px. 15 tests green. Screenshot in `docs/`.
+- **M0 gate reached** — ready for review before M1.
