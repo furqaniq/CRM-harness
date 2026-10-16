@@ -33,7 +33,7 @@ pnpm dev        # http://localhost:3000
 | `pnpm typecheck` | Generate route types, then `tsc --noEmit` |
 | `pnpm test` | Vitest once |
 | `pnpm test:watch` | Vitest in watch mode |
-| `pnpm ci` | lint + typecheck + test + build (what CI runs) |
+| `pnpm verify` | lint + typecheck + test + build (what CI runs) |
 
 ## Project layout
 
@@ -76,7 +76,14 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
 - **Missing spec inputs.** The spec expects `fixtures/` (real CRM tool definitions), `design/`
   (screenshot), two test workbooks and `SOUL.maple.md`. None exist in this repo yet. Work proceeds
   against the spec's own tool names plus a simulator until they are provided.
+- **Prompt box is visual-only.** The glowing ring, pills and send button render, but sending and
+  stopping a run arrive with the core loop in S5 (M1).
+- **Token meter shows sample values** (`1,310 / 2,811`) until per-run cost and token accounting land
+  in M1.
+- **Agents, Skills, Loops, MCP, Providers, Runs, Test Lab and Settings routes are placeholders**
+  (each states the milestone it arrives in). Chat/ and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler
   (M5, 15-minute loops and cron routines) needs always-on execution that Vercel Cron cannot provide
   on its own — to be resolved or recorded as a gap at the M5 gate.
-- **M0 screenshot** (`docs/`) is produced when the shell lands in S2.
+- **Branch switcher, language picker and search (Ctrl K) are inert** until their milestones land;
+  Ctrl K focuses the search field but searching itself is not wired.

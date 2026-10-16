@@ -110,6 +110,16 @@ pre {
 }
 
 /* Small chrome pieces shared by the shell and the prompt box. */
+@utility note {
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--o5);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 14px 0;
+  max-width: 78ch;
+}
+
 @utility pill {
   border: 1px solid var(--bd);
   border-radius: var(--radius-pill);
