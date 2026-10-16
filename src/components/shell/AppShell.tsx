@@ -6,7 +6,6 @@ import Rail from "./Rail";
 import SidePanel from "./SidePanel";
 import TopBar from "./TopBar";
 import { titleFor } from "./nav";
-import { INITIAL_TOKEN_METER } from "./tokenMeter";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -34,9 +33,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div className={`grid h-dvh overflow-hidden ${columns}`}>
       <Rail />
 
-      {panelOpen && (
-        <SidePanel searchRef={searchRef} meter={INITIAL_TOKEN_METER} />
-      )}
+      {panelOpen && <SidePanel searchRef={searchRef} />}
 
       <div className="flex min-w-0 flex-col">
         <TopBar

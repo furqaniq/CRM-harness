@@ -12,7 +12,8 @@ export type IconKey =
   | "panel"
   | "chevron"
   | "clock"
-  | "branch";
+  | "branch"
+  | "stop";
 
 export interface NavItem {
   key: string;

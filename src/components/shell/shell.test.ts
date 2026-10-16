@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { isActive, NAV, RAIL_NAV, titleFor } from "./nav";
-import { formatTokens, INITIAL_TOKEN_METER, usedPercent } from "./tokenMeter";
+import {
+  EMPTY_SESSION_USAGE,
+  formatTokens,
+  meterFromSession,
+  recordRun,
+  SESSION_TOKEN_BUDGET,
+  totalTokens,
+  usedPercent,
+} from "./tokenMeter";
 
 describe("rail navigation", () => {
   it("exposes the eight rail entries from spec section 1, in order", () => {
@@ -51,18 +59,32 @@ describe("titleFor", () => {
 });
 
 describe("token meter", () => {
-  it("derives the percentage from used and limit", () => {
-    expect(usedPercent(INITIAL_TOKEN_METER)).toBe(47);
-    expect(usedPercent({ yourUsed: 0, yourLimit: 2811, companyUsedPercent: 0 })).toBe(0);
-    expect(usedPercent({ yourUsed: 5000, yourLimit: 2811, companyUsedPercent: 0 })).toBe(100);
+  it("derives the percentage from used tokens and the session budget", () => {
+    expect(usedPercent({ yourUsed: 0, yourLimit: SESSION_TOKEN_BUDGET })).toBe(0);
+    expect(usedPercent({ yourUsed: 50_000, yourLimit: SESSION_TOKEN_BUDGET })).toBe(50);
+    expect(usedPercent({ yourUsed: 150_000, yourLimit: SESSION_TOKEN_BUDGET })).toBe(100);
   });
 
   it("never reports a percentage for a zero limit", () => {
-    expect(usedPercent({ yourUsed: 10, yourLimit: 0, companyUsedPercent: 0 })).toBe(0);
+    expect(usedPercent({ yourUsed: 10, yourLimit: 0 })).toBe(0);
   });
 
   it("formats counts with thousands separators", () => {
     expect(formatTokens(1310)).toBe("1,310");
     expect(formatTokens(2811)).toBe("2,811");
+  });
+
+  it("adds each run's tokens, cost and count into the session totals", () => {
+    let usage = EMPTY_SESSION_USAGE;
+    usage = recordRun(usage, { usage: { inputTokens: 100, outputTokens: 50 }, costUsd: 0.01 });
+    usage = recordRun(usage, { usage: { inputTokens: 20, outputTokens: 5 }, costUsd: 0.002 });
+
+    expect(totalTokens(usage)).toBe(175);
+    expect(usage.runs).toBe(2);
+    expect(usage.costUsd).toBeCloseTo(0.012, 6);
+
+    const meter = meterFromSession(usage);
+    expect(meter.yourUsed).toBe(175);
+    expect(meter.yourLimit).toBe(SESSION_TOKEN_BUDGET);
   });
 });

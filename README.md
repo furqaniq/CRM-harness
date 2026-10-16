@@ -15,9 +15,11 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0 complete, M1 in progress.** Implemented so far: scaffold, design tokens, app shell, CI,
-provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible / scripted mock) and the core
-agent loop. Streaming chat (S5) is the remaining M1 step.
+**Status: M0 and M1 complete.** Implemented so far: scaffold, design tokens, app shell, CI,
+provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible / scripted demo model), the core
+agent loop, and the streaming chat: `POST /api/chat` runs the loop and streams SSE frames that the
+browser renders as text, step traces and token/cost usage, with Stop cancelling a run mid-flight.
+Next up: M2 (MCP manager, policy, artifacts, CRM simulator).
 
 ## Setup
 
@@ -44,11 +46,13 @@ pnpm dev        # http://localhost:3000
 ```
 src/
   app/          Next.js routes inside the (shell) route group, layout, design tokens (globals.css)
-  components/   shell (rail, panel, top bar, token meter) and chat UI
+    api/chat/   SSE chat route: runs the agent loop, accepts { cancelRunId }
+  components/   shell (rail, panel, top bar, live token meter) and chat UI (workspace, reducer, prompt box)
   design/       Design tokens mirrored in TS, enforced by tokens.test.ts
   core/         Local engine library:
-    providers/  neutral chat types, Anthropic + OpenAI SSE adapters, provider registry, scripted mock
+    providers/  neutral chat types, Anthropic + OpenAI SSE adapters, provider registry, scripted demo model
     models/     model configs, roles, fallback chains, token and cost accounting
+    events/     SSE encode/decode shared by the route and the browser
     loop/       agent loop: context assembly, streaming, parallel tool calls, limits, cancellation
   (policy, planner, coordinator, routines, skills arrive with their milestones)
 ```
@@ -85,11 +89,14 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
 - **Missing spec inputs.** The spec expects `fixtures/` (real CRM tool definitions), `design/`
   (screenshot), two test workbooks and `SOUL.maple.md`. None exist in this repo yet. Work proceeds
   against the spec's own tool names plus a simulator until they are provided.
-- **Prompt box is visual-only.** The glowing ring, pills and send button render; sending a message,
-  streaming the reply and stopping a run arrive with the streaming chat in S5 (M1). The loop behind
-  it already exists in `src/core/loop/`.
-- **Token meter shows sample values** (`1,310 / 2,811`) until the streaming chat wires real per-run
-  token and cost accounting in S5.
+- **The session token meter is client-side and its budget is a placeholder.** `SESSION_TOKEN_BUDGET`
+  is 100,000 until spend caps (M7) define the real limits; usage lives in React state, so a page
+  refresh resets it. There is no server-side ledger or enforcement yet.
+- **Stop force-closes the stream after 3s.** Stop posts `{ cancelRunId }` and lets the run end on its
+  own so `run_end` still carries the usage; if the run does not finish within `STOP_FORCE_MS`, the
+  connection is aborted and the reply shows what had streamed so far.
+- **Run history is chat-local.** Runs are only what the transcript shows; there is no persisted run
+  store yet (the Runs page arrives with the milestones that write to storage).
 - **Context compaction is drop-oldest only.** `maxContextTokens` trims the oldest turn when the
   estimate goes over budget, keeping tool results paired with their calls. The spec's summarising
   compaction at 75% of the window, session memory of resolved references, and "ask which one" when

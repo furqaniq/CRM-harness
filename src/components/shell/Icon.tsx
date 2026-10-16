@@ -91,6 +91,7 @@ const PATHS: Record<IconKey, ReactNode> = {
       <path d="M7 8.5v7M17 11.5c0 3.5-4 3.5-7 4.5" />
     </>
   ),
+  stop: <rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor" stroke="none" />,
 };
 
 export function Icon({ name, className }: { name: IconKey; className?: string }) {

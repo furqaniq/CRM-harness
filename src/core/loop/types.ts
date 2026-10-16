@@ -136,4 +136,4 @@ export interface RunSummary {
   messages: Message[];
 }
 
-export type { Message, ToolCall, ToolDefinition };
+export type { Message, TokenUsage, ToolCall, ToolDefinition };

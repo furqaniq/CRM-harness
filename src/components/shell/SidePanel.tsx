@@ -7,18 +7,19 @@ import { Icon } from "./Icon";
 import { isActive, QUICK_ACCESS, RECENT_ITEMS } from "./nav";
 import {
   formatTokens,
-  INITIAL_TOKEN_METER,
+  meterFromSession,
+  useSessionUsage,
   usedPercent,
-  type TokenMeter,
 } from "./tokenMeter";
+import { formatUsd } from "@/core/models/config";
 
 interface SidePanelProps {
   searchRef: RefObject<HTMLInputElement | null>;
-  meter: TokenMeter;
 }
 
-export default function SidePanel({ searchRef, meter }: SidePanelProps) {
+export default function SidePanel({ searchRef }: SidePanelProps) {
   const pathname = usePathname();
+  const meter = meterFromSession(useSessionUsage());
   const percent = usedPercent(meter);
 
   return (
@@ -72,8 +73,8 @@ export default function SidePanel({ searchRef, meter }: SidePanelProps) {
       </ul>
 
       <div className="mt-auto pt-6">
-        <div>
-          Your tokens used{" "}
+        <div className="flex items-baseline justify-between gap-2">
+          <span>Your tokens used</span>
           <b className="text-[12.5px] text-tx">
             {formatTokens(meter.yourUsed)} / {formatTokens(meter.yourLimit)}
           </b>
@@ -92,11 +93,10 @@ export default function SidePanel({ searchRef, meter }: SidePanelProps) {
           />
         </div>
         <div className="text-[11.5px]">
-          Company tokens {meter.companyUsedPercent}%
+          {meter.runs} {meter.runs === 1 ? "run" : "runs"} this session ·{" "}
+          {formatUsd(meter.costUsd)}
         </div>
       </div>
     </aside>
   );
 }
-
-export { INITIAL_TOKEN_METER };
