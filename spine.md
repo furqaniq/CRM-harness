@@ -11,7 +11,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 |---|------|--------|--------|--------|
 | S1 | git init, scaffold, CI, design tokens, lint/typecheck, README | [x] | `e983cd8` | yes |
 | S2 | App shell (rail, panel, top bar, token meter) | [x] | `c2d562d` | pending |
-| S3 | Provider abstraction + model config | [ ] | | |
+| S3 | Provider abstraction + model config | [x] | `1ba2a26` | pending |
 | S4 | Core agent loop (stream, parallel tools, limits, cancel) | [ ] | | |
 | S5 | Streaming chat UI, glowing prompt box, stop, token meter | [ ] | | |
 | S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [ ] | | |
@@ -65,3 +65,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   token meter, top bar with branch/language/owner mode, glowing prompt box, nine routes (eight are
   placeholders), responsive at 760px. 15 tests green. Screenshot in `docs/`.
 - **M0 gate reached** — ready for review before M1.
+- M0 pushed; user approved scripted-mock-first for M1 (a real key is only needed when testing a
+  provider in the UI).
+- S3 done (`1ba2a26`): neutral chat types + typed event stream, Anthropic and OpenAI/OpenAI-
+  compatible/Gemini SSE adapters, provider registry, model roles + fallback chains + cost
+  accounting, scripted mock provider. Transport tested with an injected fetch. 33 tests green.
