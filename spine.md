@@ -13,8 +13,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S2 | App shell (rail, panel, top bar, token meter) | [x] | `c2d562d` | yes |
 | S3 | Provider abstraction + model config | [x] | `1ba2a26` | yes |
 | S4 | Core agent loop (stream, parallel tools, limits, cancel) | [x] | `6a83c9d` | yes |
-| S5 | Streaming chat UI, glowing prompt box, stop, token meter | [x] | `7f10429` | pending |
-| S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [ ] | | |
+| S5 | Streaming chat UI, glowing prompt box, stop, token meter | [x] | `7f10429` | yes |
+| S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [x] | `2849ddb` | pending |
 | S7 | Policy engine + tool scoping | [ ] | | |
 | S8 | Large-result artifacts | [ ] | | |
 | S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [ ] | | |
@@ -42,7 +42,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 - [x] M0 complete — shell matches spec section 1, screenshot saved to `docs/` (`docs/m0-shell.png`, `docs/m0-shell-mobile.png`)
 - [x] M1 complete — provider tested against an injected fetch, chat streams over SSE, stop mid-run works, token meter tracks real usage; scripted demo model (`docs/m1-chat.png`, `docs/m1-chat-mobile.png`)
-- [ ] M2 complete — simulator + remote server connect; deny pattern blocks delete; 270 KB result handled
+- [ ] M2 complete — simulator + remote server connect (S9); deny pattern blocks delete (S7);
+  270 KB result handled (S8); MCP manager + tool registry landed with S6
 - [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
 - [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
 - [ ] M5 complete — seed routines run; unattended cannot live-effect; overlap/missed-run tested
@@ -61,6 +62,12 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   (100,000) is a placeholder until M7 spend caps; no server-side ledger or enforcement yet.
 - Stop posts `{ cancelRunId }` and lets `run_end` land so usage is recorded, force-aborting the
   stream only after `STOP_FORCE_MS` (3s).
+- MCP config is in-memory (process-local manager): add/update/remove/tool settings reset on server
+  restart; no persisted config until storage lands. OAuth auth type is refused with a plain error
+  until secrets (M7).
+- The stdio MCP transport spawns a local child process — fine for `pnpm dev` and tests, not
+  deployable on Vercel serverless (D1/D2). Bundled demo tools are samples, not the real Maple CRM;
+  the "Maple CRM" entry is a disabled placeholder.
 
 ## Log
 
@@ -98,3 +105,18 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   (`pnpm verify`), `@/` alias added to vitest config.
 - **M1 gate reached** — ready for review before M2. Screenshots: `docs/m1-chat.png`,
   `docs/m1-chat-mobile.png`.
+- S6 done (`2849ddb`): MCP layer. `src/core/mcp/` speaks JSON-RPC over three transports — stdio
+  (child process with plain ENOENT/write-failure errors), streamable HTTP (bearer/header auth) and
+  legacy SSE — with handshake, `notifications/initialized`, paginated `tools/list` and `tools/call`.
+  A manager tracks per-server status (connecting/connected/error/disabled), rate limits, timeouts
+  and lazy reconnect, seeded with a disabled "Maple CRM" placeholder plus a bundled stdio demo
+  server (`scripts/demo-mcp-server.mjs`, sample tools only). `src/core/tools/` adds the registry
+  (server sync preserving operator edits, server-qualified names on collisions) and class
+  inference: deny words win, unclassified tools default to `live-effect` (ask), labels are
+  humanized. `POST /api/mcp` handles add/update/remove/test/discover/call/import/setTool and always
+  returns a fresh snapshot; OAuth is refused with a plain "not yet". The `/mcp` page is live: server
+  cards (Test/Discover/Enable/Remove), tools table (display label, class, verify-with, enabled),
+  tool console and `.mcp.json` import — browser-checked end-to-end (discover 6 tools, call returns
+  lead JSON, class survives rediscovery, plain-language failure for an unreachable server).
+  147 tests green (`pnpm verify`), screenshots `docs/m2-mcp.png`, `docs/m2-mcp-tools.png`,
+  `docs/m2-mcp-mobile.png`. S7 (policy engine) next.
