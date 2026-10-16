@@ -12,8 +12,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S1 | git init, scaffold, CI, design tokens, lint/typecheck, README | [x] | `e983cd8` | yes |
 | S2 | App shell (rail, panel, top bar, token meter) | [x] | `c2d562d` | yes |
 | S3 | Provider abstraction + model config | [x] | `1ba2a26` | yes |
-| S4 | Core agent loop (stream, parallel tools, limits, cancel) | [x] | `6a83c9d` | pending |
-| S5 | Streaming chat UI, glowing prompt box, stop, token meter | [ ] | | |
+| S4 | Core agent loop (stream, parallel tools, limits, cancel) | [x] | `6a83c9d` | yes |
+| S5 | Streaming chat UI, glowing prompt box, stop, token meter | [x] | `7f10429` | pending |
 | S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [ ] | | |
 | S7 | Policy engine + tool scoping | [ ] | | |
 | S8 | Large-result artifacts | [ ] | | |
@@ -41,7 +41,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 ## Milestone gates
 
 - [x] M0 complete — shell matches spec section 1, screenshot saved to `docs/` (`docs/m0-shell.png`, `docs/m0-shell-mobile.png`)
-- [ ] M1 complete — add/test provider, stream chat, stop mid-run, token meter; scripted mock model
+- [x] M1 complete — provider tested against an injected fetch, chat streams over SSE, stop mid-run works, token meter tracks real usage; scripted demo model (`docs/m1-chat.png`, `docs/m1-chat-mobile.png`)
 - [ ] M2 complete — simulator + remote server connect; deny pattern blocks delete; 270 KB result handled
 - [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
 - [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
@@ -57,6 +57,10 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   Summarising compaction at 75% of the window, session memory of resolved references and the
   "ask which one" rule (spec §4 Context) are not implemented yet.
 - M5 scheduler vs. Vercel Cron limits — to be resolved or recorded at the M5 gate.
+- Session token meter is client-side (React state, resets on refresh) and `SESSION_TOKEN_BUDGET`
+  (100,000) is a placeholder until M7 spend caps; no server-side ledger or enforcement yet.
+- Stop posts `{ cancelRunId }` and lets `run_end` land so usage is recorded, force-aborting the
+  stream only after `STOP_FORCE_MS` (3s).
 
 ## Log
 
@@ -81,5 +85,16 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   tool errors the model can read. Limits: steps, time, tokens, cost (each stops the run with a
   named limit), plus external cancellation during streaming or mid-tool. Provider fallback chain
   retries only when a call fails before any output. Context assembly trims the oldest turn by token
-  budget without orphaning tool results. Mock provider grew per-call scripts for multi-turn tests.
-  59 tests green (`pnpm verify`: lint, typecheck, test, build).
+   budget without orphaning tool results. Mock provider grew per-call scripts for multi-turn tests.
+   59 tests green (`pnpm verify`: lint, typecheck, test, build).
+- S5 done (`7f10429`): streaming chat closes M1. `POST /api/chat` runs the agent loop and writes
+  SSE frames; the browser reads them through `src/core/events/sse.ts` into a reducer
+  (`chatState.ts`) that renders messages, step traces and run notices. Trace cards show
+  `✓ Answered in 0.2s` plus tokens/steps by default and raw model ids, context size and step lines
+  only behind Advanced (spec §1). Stop posts `{ cancelRunId }`, lets `run_end` carry the usage
+  (3s force-abort guard), so cancelled runs still count in the meter. Token meter is now a live
+  session store fed by `run_end`; the side panel shows runs and cost for the session. Demo model
+  provider (`src/core/providers/demo.ts`) answers through the real loop. 89 tests green
+  (`pnpm verify`), `@/` alias added to vitest config.
+- **M1 gate reached** — ready for review before M2. Screenshots: `docs/m1-chat.png`,
+  `docs/m1-chat-mobile.png`.
