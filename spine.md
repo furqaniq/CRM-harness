@@ -9,7 +9,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 | # | Step | Status | Commit | Pushed |
 |---|------|--------|--------|--------|
-| S1 | git init, scaffold, CI, design tokens, lint/typecheck, README | [~] | | |
+| S1 | git init, scaffold, CI, design tokens, lint/typecheck, README | [x] | `e983cd8` | yes |
 | S2 | App shell (rail, panel, top bar, token meter) | [ ] | | |
 | S3 | Provider abstraction + model config | [ ] | | |
 | S4 | Core agent loop (stream, parallel tools, limits, cancel) | [ ] | | |
@@ -57,4 +57,7 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 ## Log
 
-- Plan approved; `plan.md` and `spine.md` created (not yet a git repo).
+- Plan approved; `plan.md` and `spine.md` created.
+- S1 done (`e983cd8`, pushed): Next.js 16 scaffold, design tokens, lint/typecheck/test/build all
+  green, GitHub Actions CI, README with Known gaps. Repo `furqaniq/CRM-harness` created via composio
+  GitHub toolkit.
