@@ -15,7 +15,9 @@ export interface MockScriptStep {
 
 export interface MockProviderOptions {
   /** Scripted steps replayed on every stream call. */
-  script: MockScriptStep[];
+  script?: MockScriptStep[];
+  /** One script per stream call; the last one repeats when the calls run out. */
+  scripts?: MockScriptStep[][];
   /** Milliseconds between steps. 0 replays without waiting. */
   delayMs?: number;
   model?: string;
@@ -43,16 +45,21 @@ function toEvent(step: MockScriptStep): ProviderEvent {
   }
 }
 
-export function createMockProvider(
-  options: MockProviderOptions = { script: DEFAULT_SCRIPT },
-): ChatProvider {
+export function createMockProvider(options: MockProviderOptions = {}): ChatProvider {
   const delayMs = options.delayMs ?? 0;
+  const scripts: MockScriptStep[][] =
+    options.scripts && options.scripts.length > 0
+      ? options.scripts
+      : [options.script ?? DEFAULT_SCRIPT];
+  let streamCall = 0;
 
   return {
     kind: "mock",
     model: options.model ?? "mock-model",
     async *stream(_request, signal): AsyncIterable<ProviderEvent> {
-      for (const step of options.script) {
+      const script = scripts[Math.min(streamCall, scripts.length - 1)];
+      streamCall += 1;
+      for (const step of script) {
         if (delayMs > 0) {
           await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
         }

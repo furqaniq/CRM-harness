@@ -14,6 +14,8 @@ import type {
 export interface CreateProviderOptions {
   /** Scripted steps for the `mock` kind, so tests and demos need no key. */
   mockScript?: MockScriptStep[];
+  /** One script per stream call for the `mock` kind; the last one repeats. */
+  mockScripts?: MockScriptStep[][];
 }
 
 export function createProvider(
@@ -24,7 +26,9 @@ export function createProvider(
   switch (config.kind) {
     case "mock":
       return createMockProvider({
-        script: options.mockScript ?? [{ type: "done", stop: "end" }],
+        ...(options.mockScripts
+          ? { scripts: options.mockScripts }
+          : { script: options.mockScript ?? [{ type: "done", stop: "end" }] }),
         model: config.model,
       });
     case "anthropic":

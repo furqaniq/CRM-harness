@@ -15,8 +15,9 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0 complete.** Implemented so far: scaffold, design tokens, app shell, CI, tests.
-Everything else lands with its milestone below.
+**Status: M0 complete, M1 in progress.** Implemented so far: scaffold, design tokens, app shell, CI,
+provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible / scripted mock) and the core
+agent loop. Streaming chat (S5) is the remaining M1 step.
 
 ## Setup
 
@@ -45,7 +46,11 @@ src/
   app/          Next.js routes inside the (shell) route group, layout, design tokens (globals.css)
   components/   shell (rail, panel, top bar, token meter) and chat UI
   design/       Design tokens mirrored in TS, enforced by tokens.test.ts
-  core/         Agent loop, events, tools, policy, planner, routines — added from M1
+  core/         Local engine library:
+    providers/  neutral chat types, Anthropic + OpenAI SSE adapters, provider registry, scripted mock
+    models/     model configs, roles, fallback chains, token and cost accounting
+    loop/       agent loop: context assembly, streaming, parallel tool calls, limits, cancellation
+  (policy, planner, coordinator, routines, skills arrive with their milestones)
 ```
 
 Spec assets the plan expects (`fixtures/`, `design/`, workbooks, `SOUL.maple.md`) are **not in the
@@ -80,10 +85,15 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
 - **Missing spec inputs.** The spec expects `fixtures/` (real CRM tool definitions), `design/`
   (screenshot), two test workbooks and `SOUL.maple.md`. None exist in this repo yet. Work proceeds
   against the spec's own tool names plus a simulator until they are provided.
-- **Prompt box is visual-only.** The glowing ring, pills and send button render, but sending and
-  stopping a run arrive with the core loop in S5 (M1).
-- **Token meter shows sample values** (`1,310 / 2,811`) until per-run cost and token accounting land
-  in M1.
+- **Prompt box is visual-only.** The glowing ring, pills and send button render; sending a message,
+  streaming the reply and stopping a run arrive with the streaming chat in S5 (M1). The loop behind
+  it already exists in `src/core/loop/`.
+- **Token meter shows sample values** (`1,310 / 2,811`) until the streaming chat wires real per-run
+  token and cost accounting in S5.
+- **Context compaction is drop-oldest only.** `maxContextTokens` trims the oldest turn when the
+  estimate goes over budget, keeping tool results paired with their calls. The spec's summarising
+  compaction at 75% of the window, session memory of resolved references, and "ask which one" when
+  several entities were just shown are not implemented yet.
 - **Agents, Skills, Loops, MCP, Providers, Runs, Test Lab and Settings routes are placeholders**
   (each states the milestone it arrives in). Chat/ and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler
