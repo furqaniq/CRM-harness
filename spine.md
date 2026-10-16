@@ -10,9 +10,9 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | # | Step | Status | Commit | Pushed |
 |---|------|--------|--------|--------|
 | S1 | git init, scaffold, CI, design tokens, lint/typecheck, README | [x] | `e983cd8` | yes |
-| S2 | App shell (rail, panel, top bar, token meter) | [x] | `c2d562d` | pending |
-| S3 | Provider abstraction + model config | [x] | `1ba2a26` | pending |
-| S4 | Core agent loop (stream, parallel tools, limits, cancel) | [ ] | | |
+| S2 | App shell (rail, panel, top bar, token meter) | [x] | `c2d562d` | yes |
+| S3 | Provider abstraction + model config | [x] | `1ba2a26` | yes |
+| S4 | Core agent loop (stream, parallel tools, limits, cancel) | [x] | `6a83c9d` | pending |
 | S5 | Streaming chat UI, glowing prompt box, stop, token meter | [ ] | | |
 | S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [ ] | | |
 | S7 | Policy engine + tool scoping | [ ] | | |
@@ -53,6 +53,9 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 - Missing inputs: `fixtures/` (tool definitions), `design/` screenshot, two test workbooks,
   `SOUL.maple.md`. Building against spec tool names + simulator until provided.
+- Context handling is drop-oldest by token budget (`maxContextTokens` in `src/core/loop/context.ts`).
+  Summarising compaction at 75% of the window, session memory of resolved references and the
+  "ask which one" rule (spec §4 Context) are not implemented yet.
 - M5 scheduler vs. Vercel Cron limits — to be resolved or recorded at the M5 gate.
 
 ## Log
@@ -70,3 +73,13 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 - S3 done (`1ba2a26`): neutral chat types + typed event stream, Anthropic and OpenAI/OpenAI-
   compatible/Gemini SSE adapters, provider registry, model roles + fallback chains + cost
   accounting, scripted mock provider. Transport tested with an injected fetch. 33 tests green.
+- S4 done (`6a83c9d`): core agent loop in `src/core/loop/` — `runAgent()` async generator emits one
+  typed event stream (run/step ids, text deltas, tool_start/tool_result sharing a step id, usage,
+  model_error, run_end) and returns a `RunSummary` with the transcript, so routines, subagents and
+  tests use it as a library. Independent tool calls of one step run in parallel and are dispatched
+  before any of them finishes; tool failures, malformed arguments and unknown tools come back as
+  tool errors the model can read. Limits: steps, time, tokens, cost (each stops the run with a
+  named limit), plus external cancellation during streaming or mid-tool. Provider fallback chain
+  retries only when a call fails before any output. Context assembly trims the oldest turn by token
+  budget without orphaning tool results. Mock provider grew per-call scripts for multi-turn tests.
+  59 tests green (`pnpm verify`: lint, typecheck, test, build).
