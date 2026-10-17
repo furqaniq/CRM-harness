@@ -78,6 +78,8 @@ export type LoopEvent = LoopEventBase &
         modelId: string;
         model: string;
         role: string;
+        /** Display name of the agent this run belongs to (subagents only). */
+        agentLabel?: string;
         startedAt: number;
         systemChars: number;
         messageCount: number;

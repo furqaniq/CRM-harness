@@ -12,6 +12,24 @@ export interface TraceEntry {
   durationMs?: number;
 }
 
+/**
+ * One subagent run beside the parent's trace (spec §1: parallel subagents sit
+ * side by side as lanes). Built only from the child's own events, which carry
+ * parentRunId; raw tool names stay behind the Advanced toggle like the parent's.
+ */
+export interface LaneTrace {
+  runId: string;
+  label: string;
+  /** The child's streamed answer (kept short for display). */
+  content: string;
+  entries: TraceEntry[];
+  raw: string[];
+  status: "running" | "done" | "error";
+  startedAt: number;
+  durationMs?: number;
+  stop?: RunStop;
+}
+
 export interface RunTrace {
   runId: string;
   modelId: string;
@@ -24,6 +42,8 @@ export interface RunTrace {
   usage?: TokenUsage;
   costUsd?: number;
   entries: TraceEntry[];
+  /** Subagent lanes, in the order their runs started. */
+  lanes: LaneTrace[];
   /** Raw model ids, tool names and errors — shown only behind Advanced. */
   raw: string[];
 }
@@ -161,7 +181,145 @@ function finalize(state: ChatState, note: string | null): ChatState {
   };
 }
 
+function accumulateUsage(
+  state: ChatState,
+  event: { inputTokens: number; outputTokens: number },
+): ChatState {
+  return {
+    ...state,
+    usage: {
+      inputTokens: state.usage.inputTokens + event.inputTokens,
+      outputTokens: state.usage.outputTokens + event.outputTokens,
+    },
+  };
+}
+
+/** Lane display cap; full detail lives in the raw trace behind Advanced. */
+const LANE_CONTENT_CHARS = 1_500;
+
+function applyLaneEvent(state: ChatState, pending: PendingRun, event: LoopEvent): ChatState {
+  const trace = pending.trace;
+
+  const withLanes = (lanes: LaneTrace[]): ChatState => ({
+    ...state,
+    pending: { ...pending, trace: { ...trace, lanes } },
+  });
+
+  const mapLane = (runId: string, update: (lane: LaneTrace) => LaneTrace): LaneTrace[] =>
+    trace.lanes.map((lane) => (lane.runId === runId ? update(lane) : lane));
+
+  switch (event.type) {
+    case "run_start": {
+      return withLanes([
+        ...trace.lanes,
+        {
+          runId: event.runId,
+          label: event.agentLabel ?? "Specialist",
+          content: "",
+          entries: [],
+          raw: [`model ${event.model} (${event.modelId})`],
+          status: "running",
+          startedAt: event.startedAt,
+        },
+      ]);
+    }
+    case "step_start": {
+      return withLanes(
+        mapLane(event.runId, (lane) => ({
+          ...lane,
+          raw: [...lane.raw, `step ${event.stepId} · ${event.model}`],
+        })),
+      );
+    }
+    case "text_delta": {
+      return withLanes(
+        mapLane(event.runId, (lane) => ({
+          ...lane,
+          content: (lane.content + event.text).slice(0, LANE_CONTENT_CHARS),
+        })),
+      );
+    }
+    case "tool_start": {
+      const input = event.input === null ? "" : ` ${JSON.stringify(event.input)}`;
+      return withLanes(
+        mapLane(event.runId, (lane) => ({
+          ...lane,
+          entries: [
+            ...lane.entries,
+            {
+              stepId: event.stepId,
+              callId: event.callId,
+              name: event.name,
+              label: humanToolLabel(event.name),
+              status: "running" as const,
+            },
+          ],
+          raw: [...lane.raw, `${event.name}${input}`],
+        })),
+      );
+    }
+    case "tool_result": {
+      return withLanes(
+        mapLane(event.runId, (lane) => ({
+          ...lane,
+          entries: lane.entries.map((entry) =>
+            entry.callId === event.callId
+              ? {
+                  ...entry,
+                  status: event.isError ? ("error" as const) : ("done" as const),
+                  durationMs: event.durationMs,
+                }
+              : entry,
+          ),
+          raw: [
+            ...lane.raw,
+            event.isError
+              ? `${event.name} failed: ${event.content}`
+              : `${event.name} ok (${event.durationMs}ms)`,
+          ],
+        })),
+      );
+    }
+    case "usage": {
+      return accumulateUsage(state, event);
+    }
+    case "model_error": {
+      return withLanes(
+        mapLane(event.runId, (lane) => ({ ...lane, raw: [...lane.raw, event.message] })),
+      );
+    }
+    case "run_end": {
+      return withLanes(
+        mapLane(event.runId, (lane) => ({
+          ...lane,
+          content:
+            event.finalText === ""
+              ? lane.content
+              : event.finalText.slice(0, LANE_CONTENT_CHARS),
+          status: event.stop === "error" ? ("error" as const) : ("done" as const),
+          durationMs: event.durationMs,
+          stop: event.stop,
+        })),
+      );
+    }
+  }
+}
+
 function applyEvent(state: ChatState, event: LoopEvent): ChatState {
+  const pending = state.pending;
+
+  // Subagent events: matched by parentRunId, they update a lane and never
+  // touch the parent's reply, message list or stop state.
+  if (event.parentRunId !== undefined) {
+    if (pending === null || event.parentRunId !== pending.trace.runId) {
+      // A child of an unknown or already-finished run: only its token usage
+      // still matters, and only while a run is streaming.
+      if (event.type === "usage" && pending !== null) return accumulateUsage(state, event);
+      return state;
+    }
+    return applyLaneEvent(state, pending, event);
+  }
+
   switch (event.type) {
     case "run_start": {
       return {
@@ -177,6 +335,7 @@ function applyEvent(state: ChatState, event: LoopEvent): ChatState {
             steps: 0,
             startedAt: event.startedAt,
             entries: [],
+            lanes: [],
             raw: [`model ${event.model} (${event.modelId})`, `system ${event.systemChars} chars`, `${event.messageCount} messages`],
           },
         },
@@ -256,13 +415,7 @@ function applyEvent(state: ChatState, event: LoopEvent): ChatState {
     }
     case "usage": {
       if (!state.pending) return state;
-      return {
-        ...state,
-        usage: {
-          inputTokens: state.usage.inputTokens + event.inputTokens,
-          outputTokens: state.usage.outputTokens + event.outputTokens,
-        },
-      };
+      return accumulateUsage(state, event);
     }
     case "model_error": {
       if (!state.pending) return state;

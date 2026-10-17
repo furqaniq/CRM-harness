@@ -65,6 +65,13 @@ export interface RunOptions {
   maxContextTokens?: number;
   runId?: string;
   parentRunId?: string;
+  /** Agent display name stamped on run_start (subagents; lanes in the trace). */
+  agentLabel?: string;
+  /**
+   * Called by `collectRun` as each event arrives, so a buffering consumer can
+   * still forward child events live (trace lanes instead of a post-run dump).
+   */
+  onEvent?: (event: LoopEvent) => void;
   signal?: AbortSignal;
   /** Injectable clock so time limits are testable. */
   now?: () => number;
@@ -147,6 +154,7 @@ export async function* runAgent(options: RunOptions): AsyncGenerator<LoopEvent, 
     modelId: candidates[0].config.id,
     model: candidates[0].provider.model,
     role: candidates[0].config.label,
+    ...(options.agentLabel !== undefined ? { agentLabel: options.agentLabel } : {}),
     startedAt,
     systemChars: options.system?.length ?? 0,
     messageCount: messages.length,
@@ -553,6 +561,7 @@ export async function collectRun(options: RunOptions): Promise<CollectedRun> {
   let next = await iterator.next();
   while (!next.done) {
     events.push(next.value);
+    options.onEvent?.(next.value);
     next = await iterator.next();
   }
   return { events, summary: next.value, text: next.value.finalText };

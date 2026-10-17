@@ -96,7 +96,7 @@ function recordIdOf(result: unknown): string | null {
     if (typeof value === "string" && value !== "") return value;
     if (typeof value === "number") return String(value);
   }
-  for (const nested of ["record", "result", "lead", "contact", "customer"]) {
+  for (const nested of ["record", "result", "lead", "contact", "customer", "created", "updated"]) {
     const inner = record[nested];
     if (inner !== null && typeof inner === "object") {
       const innerId = (inner as Record<string, unknown>).id;

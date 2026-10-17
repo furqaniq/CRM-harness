@@ -1,7 +1,13 @@
+import { buildSpawnTools } from "@/core/agents/builtins";
+import type { SpawnContext } from "@/core/agents/runner";
+import { INTERIM_AGENTS } from "@/core/agents/seed";
 import { createArtifactStore } from "@/core/artifacts/store";
+import { coordinateTools } from "@/core/coordinator";
+import { EventMux } from "@/core/events/mux";
 import { encodeSse } from "@/core/events/sse";
 import { makeRunId, runAgent } from "@/core/loop/run";
 import { errorMessage } from "@/core/loop/tools";
+import type { LoopEvent } from "@/core/loop/types";
 import { createPolicyEngine } from "@/core/policy/engine";
 import { DEMO_MODEL_CONFIG, createDemoProvider } from "@/core/providers/demo";
 import type { Message } from "@/core/providers/types";
@@ -10,6 +16,19 @@ import { inferToolClass } from "@/core/tools/classify";
 
 const MAX_MESSAGES = 200;
 const MAX_CONTENT_CHARS = 32_000;
+
+/**
+ * Read-after-write checks for the simulator's write tools (spec §4): each
+ * write names the read that proves it; mappings stay data, and the argument
+ * name comes from the read tool's own schema.
+ */
+const SIM_VERIFY_WITH: Record<string, string> = {
+  lead_create: "lead_get",
+  lead_update_status: "lead_get",
+  lead_transfer: "lead_get",
+  customer_create: "customer_get",
+  customer_update: "customer_get",
+};
 
 /**
  * Persona placeholder until the seed files land in M4 (`SOUL.maple.md` is one
@@ -101,17 +120,41 @@ export async function POST(request: Request): Promise<Response> {
     classOf: (name) => inferToolClass({ name }),
   });
 
+  // Every simulator tool runs through the write coordinator: per-record
+  // locking, in-flight idempotency, the 10-minute identical-send guard and
+  // read-after-write verification — for the root run and for children alike,
+  // since specialists draw from this same universe.
+  const allTools = coordinateTools(
+    simulator.tools({ role: "owner", userId: "u_owner" }),
+    { verifyWith: SIM_VERIFY_WITH },
+  );
+
+  // Child trace fan-in: subagent events are pushed here while the parent's
+  // spawn call is still running and streamed out live, so lanes render as
+  // they work instead of arriving as one dump at the end.
+  const mux = new EventMux<LoopEvent>();
+  const spawnContext: SpawnContext = {
+    model: { config: DEMO_MODEL_CONFIG, provider: createDemoProvider() },
+    allTools,
+    policy: (name) => policy.decide(name),
+    artifacts: chatArtifacts,
+    depth: 0,
+    signal: abort.signal,
+    onEvent: (event) => mux.push(event),
+  };
+
   const iterator = runAgent({
     model: { config: DEMO_MODEL_CONFIG, provider: createDemoProvider() },
     messages,
     system: CHAT_SYSTEM,
-    tools: simulator.tools({ role: "owner", userId: "u_owner" }),
+    tools: [...buildSpawnTools({ agents: INTERIM_AGENTS, context: spawnContext }), ...allTools],
     policy: (name) => policy.decide(name),
     artifacts: chatArtifacts,
     runId,
     signal: abort.signal,
     maxContextTokens: 60_000,
   });
+  const merged = mux.merge(iterator);
 
   const encoder = new TextEncoder();
   let finished = false;
@@ -132,7 +175,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       };
       try {
-        const { value, done } = await iterator.next();
+        const { value, done } = await merged.next();
         if (done) {
           send({ type: "stream_end", runId });
           try {
@@ -157,8 +200,7 @@ export async function POST(request: Request): Promise<Response> {
     cancel() {
       abort.abort();
       finish();
-      const closable = iterator as AsyncGenerator<unknown, unknown>;
-      void closable.return(undefined).catch(() => undefined);
+      void merged.return(undefined).catch(() => undefined);
     },
   });
 

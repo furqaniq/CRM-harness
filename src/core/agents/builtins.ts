@@ -106,7 +106,7 @@ export function spawnAgentsTool(deps: SpawnToolDeps): ToolExecutor {
         required: ["agents"],
       },
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const items = parseSpawnBatch(args);
       if ("error" in items) return items.error;
 
@@ -117,7 +117,7 @@ export function spawnAgentsTool(deps: SpawnToolDeps): ToolExecutor {
         // allSettled: siblings survive each other's failures (spec §4).
         const settled = await Promise.allSettled(
           items.map((item) =>
-            spawnOne({ ...deps, limiter }, item.agent, item.task, undefined, item.inputs),
+            spawnOne({ ...deps, limiter }, item.agent, item.task, ctx, item.inputs),
           ),
         );
         return settled.map((outcome, index) =>
@@ -141,7 +141,7 @@ export function spawnAgentsTool(deps: SpawnToolDeps): ToolExecutor {
       const plan = await runPlan({
         tasks,
         spawn: (task) =>
-          spawnOne({ ...deps, limiter }, task.agent, task.task, undefined, task.inputs),
+          spawnOne({ ...deps, limiter }, task.agent, task.task, ctx, task.inputs),
       });
       const byId = new Map(plan.results.map((result) => [result.id, result]));
       return tasks.map((task) => byId.get(task.id)!);

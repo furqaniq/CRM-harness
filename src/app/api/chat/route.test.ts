@@ -148,6 +148,115 @@ describe("POST /api/chat", () => {
     expect(getAppSimulator().db.data.outbox).toHaveLength(0);
   });
 
+  it("runs two specialist agents side by side inside one step (PAR-04 lanes)", async () => {
+    const response = await POST(
+      chatRequest({
+        messages: [userTurn("check open leads and waiting conversations in parallel")],
+      }),
+    );
+    const frames = await readAll(response);
+
+    const spawnStart = frames.find(
+      (frame) => frame.type === "tool_start" && frame.name === "spawn_agents",
+    );
+    if (spawnStart?.type !== "tool_start") throw new Error("expected a spawn_agents call");
+
+    const rootStart = frames.find(
+      (frame) => frame.type === "run_start" && frame.parentRunId === undefined,
+    );
+    if (rootStart?.type !== "run_start") throw new Error("expected the root run_start");
+    expect(spawnStart.stepId).toBeGreaterThan(0);
+
+    const childStarts = frames.filter(
+      (frame) => frame.type === "run_start" && frame.parentRunId !== undefined,
+    );
+    expect(childStarts).toHaveLength(2);
+    const labels = childStarts.map((frame) =>
+      frame.type === "run_start" ? frame.agentLabel : undefined,
+    );
+    expect(labels).toEqual(["Leads agent", "Inbox agent"]);
+    for (const frame of childStarts) {
+      if (frame.type !== "run_start") continue;
+      expect(frame.parentRunId).toBe(rootStart.runId);
+      expect(frame.runId).not.toBe(rootStart.runId);
+    }
+
+    // Both children started before the first one finished: one step, two lanes.
+    const firstEnded = frames.findIndex(
+      (frame) => frame.type === "run_end" && frame.parentRunId !== undefined,
+    );
+    const secondStarted = frames.indexOf(childStarts[1]);
+    expect(secondStarted).toBeLessThan(firstEnded);
+
+    const childTools = frames
+      .filter((frame) => frame.type === "tool_start" && frame.parentRunId !== undefined)
+      .map((frame) => (frame.type === "tool_start" ? frame.name : ""));
+    expect(childTools).toContain("lead_count");
+    expect(childTools).toContain("conversation_list");
+
+    const spawnResult = frames.find(
+      (frame) => frame.type === "tool_result" && frame.name === "spawn_agents",
+    );
+    if (spawnResult?.type !== "tool_result") throw new Error("expected the spawn result");
+    expect(spawnResult.isError).toBe(false);
+    expect(spawnResult.content).toContain('"agent":"leads"');
+    expect(spawnResult.content).toContain('"agent":"inbox"');
+    expect(spawnResult.content).toContain('"status":"ok"');
+
+    const runEnds = frames.filter((frame) => frame.type === "run_end");
+    const rootEnd = runEnds.find(
+      (frame) => frame.type === "run_end" && frame.parentRunId === undefined,
+    );
+    expect(rootEnd).toBeDefined();
+    // Both lanes closed inside the parent's step; the root's run_end comes last.
+    expect(runEnds).toHaveLength(3);
+    expect(runEnds.at(-1)).toBe(rootEnd);
+    expect(textOf(frames)).toContain("Ran 2 agents side by side");
+  });
+
+  it("makes exactly one verified record through a specialist (PAR-17)", async () => {
+    const leadsBefore = getAppSimulator().db.data.leads.length;
+    const response = await POST(
+      chatRequest({ messages: [userTurn("Create a lead named Ada Harness")] }),
+    );
+    const frames = await readAll(response);
+
+    const spawnStart = frames.find(
+      (frame) => frame.type === "tool_start" && frame.name === "spawn_agent",
+    );
+    if (spawnStart?.type !== "tool_start") throw new Error("expected a spawn_agent call");
+
+    const childStart = frames.find(
+      (frame) => frame.type === "run_start" && frame.parentRunId !== undefined,
+    );
+    if (childStart?.type !== "run_start") throw new Error("expected a child run");
+    expect(childStart.agentLabel).toBe("Leads agent");
+
+    const createResult = frames.find(
+      (frame) => frame.type === "tool_result" && frame.name === "lead_create",
+    );
+    if (createResult?.type !== "tool_result") throw new Error("expected the lead_create result");
+    // The create ran inside the child's own run, not the root's.
+    expect(createResult.runId).toBe(childStart.runId);
+    expect(createResult.runId).not.toBe(childStart.parentRunId);
+    expect(createResult.isError).toBe(false);
+    expect(createResult.content).toContain('"verified":true');
+
+    const spawnResult = frames.find(
+      (frame) => frame.type === "tool_result" && frame.name === "spawn_agent",
+    );
+    if (spawnResult?.type !== "tool_result") throw new Error("expected the spawn result");
+    expect(spawnResult.content).toContain('"status":"ok"');
+    expect(spawnResult.content).toContain('"verified":true');
+    expect(spawnResult.content).toContain('"tool":"lead_create"');
+
+    // Exactly one new record, named by the prompt — nothing else changed.
+    const leads = getAppSimulator().db.data.leads;
+    expect(leads).toHaveLength(leadsBefore + 1);
+    expect(leads.at(-1)?.name).toBe("Ada Harness");
+    expect(textOf(frames)).toContain("verified");
+  });
+
   it("returns 404 for an unknown run id", async () => {
     const response = await POST(chatRequest({ cancelRunId: "run_nope" }));
     expect(response.status).toBe(404);

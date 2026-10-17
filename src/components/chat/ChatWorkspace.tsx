@@ -7,6 +7,7 @@ import { useShell } from "@/components/shell/shellContext";
 import PromptBox from "./PromptBox";
 import {
   chatReducer,
+  formatSeconds,
   initialChatState,
   runHeadline,
   runMeta,
@@ -55,6 +56,11 @@ function TraceCard({
           </span>
         )}
         <span className="text-tx">{runHeadline(trace)}</span>
+        {trace.lanes.length > 0 && (
+          <span className="text-dim">
+            {trace.lanes.length} agent{trace.lanes.length === 1 ? "" : "s"}
+          </span>
+        )}
         {live && <span className="text-y4">● {live.label}</span>}
         <span className="flex-1" />
         <button
@@ -93,6 +99,71 @@ function TraceCard({
             </li>
           ))}
         </ul>
+      )}
+
+      {trace.lanes.length > 0 && (
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-0.5">
+          {trace.lanes.map((lane) => (
+            <div
+              key={lane.runId}
+              className="min-w-52 flex-1 rounded-lg border border-bd bg-s1 px-2.5 py-2"
+            >
+              <div className="flex items-center gap-1.5 text-[12px]">
+                <span
+                  aria-hidden="true"
+                  className={
+                    lane.status === "error"
+                      ? "text-bad"
+                      : lane.status === "done"
+                        ? "text-ok"
+                        : "text-y4"
+                  }
+                >
+                  {lane.status === "error" ? "✕" : lane.status === "done" ? "✓" : "●"}
+                </span>
+                <span className="text-tx font-medium">{lane.label}</span>
+                <span className="flex-1" />
+                {lane.durationMs !== undefined && (
+                  <span className="text-faint">{formatSeconds(lane.durationMs)}</span>
+                )}
+              </div>
+              {lane.entries.length > 0 && (
+                <ul className="mt-1 flex flex-col gap-0.5 text-[11.5px]">
+                  {lane.entries.map((entry) => (
+                    <li
+                      key={entry.callId ?? `${entry.stepId}-${entry.label}`}
+                      className="flex items-center gap-1.5"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={
+                          entry.status === "error"
+                            ? "text-bad"
+                            : entry.status === "done"
+                              ? "text-ok"
+                              : "text-y4"
+                        }
+                      >
+                        {entry.status === "error" ? "✕" : entry.status === "done" ? "✓" : "●"}
+                      </span>
+                      <span className="truncate">{entry.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!advanced && lane.content !== "" && (
+                <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[11.5px] text-dim">
+                  {lane.content}
+                </p>
+              )}
+              {advanced && (
+                <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded border border-bd bg-s2 p-1.5 text-[11px] text-faint">
+                  {lane.raw.length > 0 ? lane.raw.join("\n") : "no events yet"}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
       )}
 
       {meta.length > 0 && (
@@ -245,7 +316,7 @@ export default function ChatWorkspace() {
           dispatch({ type: "stream_error" });
           continue;
         }
-        if (parsed.type === "run_start") {
+        if (parsed.type === "run_start" && parsed.parentRunId === undefined) {
           runIdRef.current = parsed.runId;
           if (stopRequestedRef.current) void cancelRun(parsed.runId);
         }

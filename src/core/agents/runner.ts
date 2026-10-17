@@ -99,6 +99,8 @@ export async function runSubagent(
       messages: [taskMessage(task)],
       system: spec.system,
       tools: [...scoped],
+      agentLabel: spec.displayName,
+      ...(context.onEvent !== undefined ? { onEvent: context.onEvent } : {}),
       ...(policy !== undefined ? { policy } : {}),
       ...(context.artifacts !== undefined ? { artifacts: context.artifacts } : {}),
       ...(runLimits !== undefined ? { limits: runLimits } : {}),
@@ -115,8 +117,6 @@ export async function runSubagent(
   } catch (error) {
     return failedResult(spec, [errorText(error)]);
   }
-
-  for (const event of collected.events) context.onEvent?.(event);
 
   return deriveResult(spec, collected.summary, collected.events);
 }
@@ -227,6 +227,9 @@ function writesOf(messages: readonly Message[]): SubagentWrite[] {
   return writes;
 }
 
+/** Same nesting the coordinator's verify step reads (`created`/`updated` wrappers). */
+const NESTED_RECORD_KEYS = ["record", "result", "lead", "contact", "customer", "created", "updated"];
+
 function recordIdOf(record: Record<string, unknown>): string | undefined {
   const direct = record.id;
   if (typeof direct === "string" && direct !== "") return direct;
@@ -235,6 +238,14 @@ function recordIdOf(record: Record<string, unknown>): string | undefined {
     if (!key.endsWith("_id")) continue;
     if (typeof value === "string" && value !== "") return value;
     if (typeof value === "number") return String(value);
+  }
+  for (const nested of NESTED_RECORD_KEYS) {
+    const inner = record[nested];
+    if (inner !== null && typeof inner === "object") {
+      const innerId = (inner as Record<string, unknown>).id;
+      if (typeof innerId === "string" && innerId !== "") return innerId;
+      if (typeof innerId === "number") return String(innerId);
+    }
   }
   return undefined;
 }

@@ -231,6 +231,144 @@ describe("chat reducer", () => {
   });
 });
 
+describe("subagent lanes", () => {
+  const CHILD = "run_child_1";
+
+  function childStart(over: Partial<Extract<LoopEvent, { type: "run_start" }>> = {}): LoopEvent {
+    return {
+      runId: CHILD,
+      parentRunId: RUN,
+      type: "run_start",
+      modelId: "demo-model",
+      model: "demo-model",
+      role: "Demo model (scripted)",
+      agentLabel: "Leads agent",
+      startedAt: 1_100,
+      systemChars: 90,
+      messageCount: 1,
+      ...over,
+    };
+  }
+
+  function childToolStart(callId: string, name: string): LoopEvent {
+    return {
+      runId: CHILD,
+      parentRunId: RUN,
+      type: "tool_start",
+      stepId: 1,
+      callId,
+      name,
+      input: {},
+      rawArguments: "{}",
+    };
+  }
+
+  function childToolEnd(callId: string, name: string, content: string): LoopEvent {
+    return {
+      runId: CHILD,
+      parentRunId: RUN,
+      type: "tool_result",
+      stepId: 1,
+      callId,
+      name,
+      content,
+      isError: false,
+      durationMs: 40,
+    };
+  }
+
+  function childEnd(over: Partial<Extract<LoopEvent, { type: "run_end" }>> = {}): LoopEvent {
+    return {
+      runId: CHILD,
+      parentRunId: RUN,
+      type: "run_end",
+      stop: "end",
+      usage: { inputTokens: 60, outputTokens: 20 },
+      costUsd: 0,
+      steps: 1,
+      durationMs: 320,
+      fallbacks: 0,
+      finalText: "4 open leads.",
+      ...over,
+    };
+  }
+
+  it("builds lanes from child events without touching the parent reply", () => {
+    let state = startRun("check both");
+    state = chatReducer(state, { type: "event", event: childStart() });
+    state = chatReducer(state, {
+      type: "event",
+      event: childStart({ runId: "run_child_2", agentLabel: "Inbox agent" }),
+    });
+    state = chatReducer(state, { type: "event", event: childToolStart("c1", "lead_count") });
+    state = chatReducer(state, {
+      type: "event",
+      event: { ...childStart(), type: "usage", stepId: 1, inputTokens: 60, outputTokens: 20 },
+    });
+    state = chatReducer(state, { type: "event", event: childToolEnd("c1", "lead_count", '{"count":4}') });
+    state = chatReducer(state, { type: "event", event: childEnd() });
+
+    const trace = state.pending?.trace;
+    expect(trace?.lanes).toHaveLength(2);
+    expect(trace?.lanes[0]).toMatchObject({
+      runId: CHILD,
+      label: "Leads agent",
+      status: "done",
+      durationMs: 320,
+      stop: "end",
+      content: "4 open leads.",
+    });
+    expect(trace?.lanes[0].entries[0]).toMatchObject({
+      label: "Lead count",
+      status: "done",
+      durationMs: 40,
+    });
+    expect(trace?.lanes[1]).toMatchObject({ label: "Inbox agent", status: "running" });
+    // The child's run_end must not close the parent's run or reply.
+    expect(state.pending).not.toBeNull();
+    expect(state.messages).toHaveLength(1);
+    expect(state.pending?.content).toBe("");
+    // Child usage still counts toward the session totals.
+    expect(state.usage).toEqual({ inputTokens: 60, outputTokens: 20 });
+  });
+
+  it("keeps lanes on the committed trace after the parent answers", () => {
+    let state = startRun("check both");
+    state = chatReducer(state, { type: "event", event: childStart() });
+    state = chatReducer(state, { type: "event", event: childEnd() });
+    state = chatReducer(state, { type: "event", event: textDelta("Both done.") });
+    state = chatReducer(state, { type: "event", event: runEnd() });
+
+    const trace = state.messages[1].trace;
+    expect(trace?.lanes).toHaveLength(1);
+    expect(trace?.lanes[0]).toMatchObject({ label: "Leads agent", status: "done" });
+    expect(state.messages[1].content).toBe("Both done.");
+  });
+
+  it("labels a lane that did not send a display name", () => {
+    let state = startRun("check");
+    state = chatReducer(state, {
+      type: "event",
+      event: childStart({ agentLabel: undefined }),
+    });
+    expect(state.pending?.trace.lanes[0].label).toBe("Specialist");
+  });
+
+  it("ignores child events that belong to another run", () => {
+    let state = startRun("check both");
+    const before = state.pending;
+    state = chatReducer(state, {
+      type: "event",
+      event: { ...childStart(), parentRunId: "run_other" },
+    });
+    state = chatReducer(state, {
+      type: "event",
+      event: { ...childEnd(), parentRunId: "run_other" },
+    });
+    expect(state.pending).toEqual(before);
+  });
+});
+
 describe("trace formatting", () => {
   it("humanises tool names for display", () => {
     expect(humanToolLabel("search_leads")).toBe("Search leads");
@@ -251,6 +389,7 @@ describe("trace formatting", () => {
       steps: 1,
       startedAt: 0,
       entries: [],
+      lanes: [],
       raw: [],
     };
 
@@ -273,6 +412,7 @@ describe("trace formatting", () => {
       usage: { inputTokens: 1200, outputTokens: 40 },
       costUsd: 0.004,
       entries: [],
+      lanes: [],
       raw: [],
     });
 

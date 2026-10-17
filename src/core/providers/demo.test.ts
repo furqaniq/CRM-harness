@@ -211,3 +211,153 @@ describe("demo provider tool routing", () => {
     expect(textOf(events)).toContain("read the artifact");
   });
 });
+
+function spawnResult(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    agent: "leads",
+    status: "ok",
+    summary: "4 open leads.",
+    writes: [],
+    errors: [],
+    runId: "run_child_1",
+    usage: { inputTokens: 40, outputTokens: 10 },
+    ...over,
+  };
+}
+
+function secondTurn(name: string, content: string): ChatRequest["messages"] {
+  return [
+    { role: "user", content: "fan out" },
+    { role: "assistant", content: "" },
+    { role: "tool", toolCallId: "c1", name, content },
+  ];
+}
+
+describe("demo provider subagent routing", () => {
+  it("fans out to spawn_agents when the prompt asks for parallel work", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const events = await collect(
+      provider.stream(
+        toolRequest("check open leads and waiting conversations in parallel", [
+          "spawn_agents",
+          "lead_count",
+          "conversation_list",
+        ]),
+      ),
+    );
+
+    const call = events.find((event) => event.type === "tool_call");
+    expect(call?.type === "tool_call" && call.call.name).toBe("spawn_agents");
+    if (call?.type !== "tool_call") throw new Error("expected a tool_call");
+    const args = JSON.parse(call.call.arguments) as { agents: { agent: string }[] };
+    expect(args.agents.map((entry) => entry.agent)).toEqual(["leads", "inbox"]);
+  });
+
+  it("skips the spawn rule when a specialist is not offered the spawn tools", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const events = await collect(
+      provider.stream(
+        toolRequest("check open leads and waiting conversations in parallel", [
+          "lead_count",
+          "conversation_list",
+        ]),
+      ),
+    );
+
+    const call = events.find((event) => event.type === "tool_call");
+    expect(call?.type === "tool_call" && call.call.name).toBe("conversation_list");
+  });
+
+  it("routes a create-lead prompt through spawn_agent when the root can spawn", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const events = await collect(
+      provider.stream(
+        toolRequest("Create a lead named Ada Harness", [
+          "spawn_agent",
+          "lead_create",
+          "lead_search",
+        ]),
+      ),
+    );
+
+    const call = events.find((event) => event.type === "tool_call");
+    expect(call?.type === "tool_call" && call.call.name).toBe("spawn_agent");
+    if (call?.type !== "tool_call") throw new Error("expected a tool_call");
+    const args = JSON.parse(call.call.arguments) as { agent: string; task: string };
+    expect(args.agent).toBe("leads");
+    expect(args.task).toContain("Ada Harness");
+  });
+
+  it("creates the lead directly when spawn tools are not offered", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const events = await collect(
+      provider.stream(
+        toolRequest("Create a lead named Ada Harness", ["lead_create", "lead_search"]),
+      ),
+    );
+
+    const call = events.find((event) => event.type === "tool_call");
+    expect(call?.type === "tool_call" && call.call.name).toBe("lead_create");
+    expect(call?.type === "tool_call" && call.call.arguments).toContain("Ada Harness");
+  });
+
+  it("narrates a parallel spawn result from what the agents reported", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const content = JSON.stringify([
+      spawnResult({ agent: "leads", summary: "That returned 4 items." }),
+      spawnResult({ agent: "inbox", summary: "That returned 2 items." }),
+    ]);
+    const events = await collect(
+      provider.stream({ model: "demo-model", messages: secondTurn("spawn_agents", content) }),
+    );
+    const text = textOf(events);
+
+    expect(text).toContain("Ran 2 agents side by side.");
+    expect(text).toContain("Leads agent — ok. That returned 4 items.");
+    expect(text).toContain("Inbox agent — ok. That returned 2 items.");
+    expect(text).not.toContain("You asked:");
+  });
+
+  it("narrates one agent's result with its status and verified writes", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const content = JSON.stringify(
+      spawnResult({
+        summary: "The record was saved and then read back from the CRM — verified.",
+        writes: [{ tool: "lead_create", recordId: "L-9001", verified: true }],
+      }),
+    );
+    const events = await collect(
+      provider.stream({ model: "demo-model", messages: secondTurn("spawn_agent", content) }),
+    );
+    const text = textOf(events);
+
+    expect(text).toContain("Leads agent finished — ok.");
+    expect(text).toContain("verified by reading the record back");
+  });
+
+  it("says a write was verified when the coordinator stamped it", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const content = JSON.stringify({ created: { id: "L-9001" }, verified: true });
+    const events = await collect(
+      provider.stream({ model: "demo-model", messages: secondTurn("lead_create", content) }),
+    );
+
+    expect(textOf(events)).toContain("read back from the CRM — verified");
+  });
+
+  it("stays honest when a write could not be read back", async () => {
+    const provider = createDemoProvider({ delayMs: 0 });
+    const content = JSON.stringify({
+      created: { id: "L-9001" },
+      verified: false,
+      verified_note: 'Read-back failed: No lead with id "L-9001".',
+    });
+    const events = await collect(
+      provider.stream({ model: "demo-model", messages: secondTurn("lead_create", content) }),
+    );
+    const text = textOf(events);
+
+    expect(text).toContain("could not be confirmed");
+    expect(text).toContain("unconfirmed");
+  });
+});
