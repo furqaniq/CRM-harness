@@ -91,6 +91,25 @@ export function createDemoProvider(options: DemoProviderOptions = {}): ChatProvi
 
       const last = request.messages.at(-1);
       if (last?.role === "tool") {
+        // A "… then …" prompt gets its second call after the first result, so
+        // dependent tool calls land in a later step than the ones before them.
+        const toolResults = request.messages.filter((message) => message.role === "tool").length;
+        if (toolResults === 1) {
+          const clause = prompt.split(/\bthen\b/i)[1]?.trim() ?? "";
+          if (clause !== "") {
+            const followUp = pickToolRule(clause, request.tools, request.messages);
+            if (followUp !== null) {
+              yield {
+                type: "usage",
+                inputTokens: 0,
+                outputTokens: estimateTokens(followUp.map((call) => call.name).join("")),
+              };
+              yield* toolCallEvents(followUp, request.messages);
+              yield { type: "done", stop: "tool_calls" };
+              return;
+            }
+          }
+        }
         // Second turn: the transcript's last message is the tool result.
         const chunks = toolFollowUpChunks(last.content, last.isError === true);
         for (const chunk of chunks) {
@@ -110,14 +129,11 @@ export function createDemoProvider(options: DemoProviderOptions = {}): ChatProvi
         return;
       }
 
-      const rule = pickToolRule(prompt, request.tools, request.messages);
-      if (rule !== null) {
-        const args = JSON.stringify(rule.args);
-        yield { type: "usage", inputTokens: 0, outputTokens: estimateTokens(`${rule.tool}${args}`) };
-        yield {
-          type: "tool_call",
-          call: { id: `demo_${stepsIn(request.messages)}_1`, name: rule.tool, arguments: args },
-        };
+      const calls = pickToolRule(prompt, request.tools, request.messages);
+      if (calls !== null) {
+        const serialized = calls.map((call) => JSON.stringify(call.args)).join("");
+        yield { type: "usage", inputTokens: 0, outputTokens: estimateTokens(serialized) };
+        yield* toolCallEvents(calls, request.messages);
         yield { type: "done", stop: "tool_calls" };
         return;
       }
@@ -146,10 +162,21 @@ function stepsIn(messages: Message[]): number {
   return messages.filter((message) => message.role === "assistant").length + 1;
 }
 
+interface DemoCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
 interface DemoToolRule {
   match: RegExp;
   tool: string;
   args: (prompt: string, messages: Message[]) => Record<string, unknown>;
+  /**
+   * Extra calls emitted in the same model turn — the loop runs them in one
+   * step, which is how a prompt can produce parallel tool calls (the trace
+   * then proves they share a step id).
+   */
+  extraCalls?: { tool: string; args: Record<string, unknown> }[];
   /**
    * Propose the call even when the tool is not on offer. A real model guesses
    * tool names; the loop asks policy first, so the delete-shaped call gets the
@@ -196,9 +223,16 @@ const TOOL_RULES: DemoToolRule[] = [
     tool: "spawn_agent",
     args: (prompt) => ({ agent: "leads", task: prompt }),
   },
+  {
+    // Two reads in one turn: the loop runs them together, in one step.
+    match: /\b(?:together|both at once)\b/i,
+    tool: "branch_list",
+    args: () => ({}),
+    extraCalls: [{ tool: "lead_count", args: { status: "" } }],
+  },
   { match: /\bautomation/i, tool: "automation_list", args: () => ({}) },
   {
-    match: /\bhow many\b[\s\S]*\bleads?\b/i,
+    match: /\bhow many\b[\s\S]*\bleads?\b|\bcount\b[\s\S]*\bleads?\b/i,
     tool: "lead_count",
     args: (prompt) => ({ status: /\bopen\b/i.test(prompt) ? "open" : "" }),
   },
@@ -244,15 +278,36 @@ function pickToolRule(
   prompt: string,
   tools: ToolDefinition[] | undefined,
   messages: Message[],
-): { tool: string; args: Record<string, unknown> } | null {
+): DemoCall[] | null {
   const available = new Set((tools ?? []).map((tool) => tool.name));
   for (const rule of TOOL_RULES) {
     if (!rule.match.test(prompt)) continue;
     if (rule.alwaysPropose !== true && !available.has(rule.tool)) continue;
     if (rule.when !== undefined && !rule.when(prompt, messages)) continue;
-    return { tool: rule.tool, args: rule.args(prompt, messages) };
+    const calls: DemoCall[] = [{ name: rule.tool, args: rule.args(prompt, messages) }];
+    for (const extra of rule.extraCalls ?? []) {
+      if (available.has(extra.tool)) calls.push({ name: extra.tool, args: extra.args });
+    }
+    return calls;
   }
   return null;
+}
+
+function* toolCallEvents(
+  calls: DemoCall[],
+  messages: Message[],
+): Generator<ProviderEvent, void, void> {
+  const step = stepsIn(messages);
+  for (const [index, call] of calls.entries()) {
+    yield {
+      type: "tool_call",
+      call: {
+        id: `demo_${step}_${index + 1}`,
+        name: call.name,
+        arguments: JSON.stringify(call.args),
+      },
+    };
+  }
 }
 
 function extractQuery(prompt: string): string {
