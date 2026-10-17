@@ -32,7 +32,8 @@ export type PolicyRule =
   | "class-default"
   | "unattended-live-effect"
   | "owner-mode"
-  | "unattended-cannot-ask";
+  | "unattended-cannot-ask"
+  | "agent-policy";
 
 export interface PolicyDecision {
   decision: PolicyMode;

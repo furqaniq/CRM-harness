@@ -1,6 +1,8 @@
 import { buildSpawnTools } from "@/core/agents/builtins";
+import { agentsFrom, loadAgentCatalog } from "@/core/agents/files";
 import type { SpawnContext } from "@/core/agents/runner";
 import { INTERIM_AGENTS } from "@/core/agents/seed";
+import { parseAgentCommand, parseSkillCommand } from "@/core/chat/commands";
 import { createArtifactStore } from "@/core/artifacts/store";
 import { coordinateTools } from "@/core/coordinator";
 import { EventMux } from "@/core/events/mux";
@@ -8,6 +10,7 @@ import { encodeSse } from "@/core/events/sse";
 import { makeRunId, runAgent } from "@/core/loop/run";
 import { errorMessage } from "@/core/loop/tools";
 import type { LoopEvent } from "@/core/loop/types";
+import { loadPersona } from "@/core/persona";
 import { createPolicyEngine } from "@/core/policy/engine";
 import { DEMO_MODEL_CONFIG, createDemoProvider } from "@/core/providers/demo";
 import type { Message } from "@/core/providers/types";
@@ -35,17 +38,6 @@ const SIM_VERIFY_WITH: Record<string, string> = {
   customer_create: "customer_get",
   customer_update: "customer_get",
 };
-
-/**
- * Persona placeholder until the seed files land in M4 (`SOUL.maple.md` is one
- * of the inputs the spec expects but does not ship).
- */
-const CHAT_SYSTEM = [
-  "You are Maple, the assistant inside the Maple mortgage CRM.",
-  "Answer in the user's language, lead with the finding, and stay on this company's data.",
-  "Never expose internal ids, raw tool names or stack traces in user-facing text.",
-  "Say when a view is limited by role or ownership, and say how many records you actually covered.",
-].join(" ");
 
 /** Abort handles for runs started by this server process (dev and single-instance hosts). */
 const activeRuns = new Map<string, AbortController>();
@@ -136,6 +128,63 @@ export async function POST(request: Request): Promise<Response> {
     skills = [];
   }
 
+  // Seed files drive the roster and the persona (spec §5–6). If the folders
+  // are missing (or every file is invalid) the interim inline roster keeps
+  // subagent spawning usable.
+  const persona = await loadPersona();
+  const roster = agentsFrom(await loadAgentCatalog());
+  const agents = roster.length > 0 ? roster : INTERIM_AGENTS;
+
+  // Chat commands: `/skill <name>` pre-injects that skill's body for this
+  // turn; `@<agent> <task>` addresses one specialist directly.
+  let system = persona.text;
+  let turnMessages = messages;
+  const lastIndex = messages.length - 1;
+  const last = messages[lastIndex];
+  if (last?.role === "user") {
+    const skillCommand = parseSkillCommand(last.content);
+    if (skillCommand !== null) {
+      if (skillCommand.name === "") {
+        return errorResponse("Say which skill: /skill <name> <message>.", 400);
+      }
+      const skill = await getAppSkillStore().get(skillCommand.name);
+      if (skill === null) {
+        return errorResponse(`No skill named "${skillCommand.name}".`, 404);
+      }
+      if (skill.errors.length > 0) {
+        return errorResponse(`The skill "${skill.name}" is not usable: ${skill.errors.join(" ")}`, 400);
+      }
+      system = `${system}\n\nSkill in effect: ${skill.name}\n\n${skill.body.trim()}`;
+      turnMessages = [
+        ...messages.slice(0, lastIndex),
+        {
+          role: "user",
+          content:
+            skillCommand.rest === ""
+              ? "Apply this skill's guidance to the request."
+              : skillCommand.rest,
+        },
+      ];
+    } else {
+      const agentCommand = parseAgentCommand(last.content);
+      if (agentCommand !== null) {
+        if (agentCommand.task === "") {
+          return errorResponse(`Add a task after @${agentCommand.name}.`, 400);
+        }
+        const agent = agents.find((entry) => entry.name === agentCommand.name);
+        if (agent === undefined) {
+          return errorResponse(
+            `No agent named "${agentCommand.name}". Try ${agents.map((entry) => entry.name).join(", ")}.`,
+            404,
+          );
+        }
+        system =
+          `${system}\n\nThe user addressed the ${agent.displayName} agent directly. ` +
+          `Call spawn_agent with agent "${agent.name}" and task "${agentCommand.task}" before composing the answer.`;
+      }
+    }
+  }
+
   // Every simulator tool runs through the write coordinator: per-record
   // locking, in-flight idempotency, the 10-minute identical-send guard and
   // read-after-write verification — for the root run and for children alike,
@@ -157,14 +206,24 @@ export async function POST(request: Request): Promise<Response> {
     depth: 0,
     signal: abort.signal,
     onEvent: (event) => mux.push(event),
+    skills: async (names) => {
+      const loaded: { name: string; body: string }[] = [];
+      for (const name of names) {
+        const skill = await getAppSkillStore().get(name);
+        if (skill !== null && skill.errors.length === 0) {
+          loaded.push({ name: skill.name, body: skill.body });
+        }
+      }
+      return loaded;
+    },
   };
 
   const iterator = runAgent({
     model: { config: DEMO_MODEL_CONFIG, provider: createDemoProvider() },
-    messages,
-    system: skills.length > 0 ? `${CHAT_SYSTEM}\n\n${catalogPrompt(skills)}` : CHAT_SYSTEM,
+    messages: turnMessages,
+    system: skills.length > 0 ? `${system}\n\n${catalogPrompt(skills)}` : system,
     tools: [
-      ...buildSpawnTools({ agents: INTERIM_AGENTS, context: spawnContext }),
+      ...buildSpawnTools({ agents, context: spawnContext }),
       ...allTools,
       ...(skills.length > 0
         ? [buildReadSkillTool((name) => getAppSkillStore().get(name))]

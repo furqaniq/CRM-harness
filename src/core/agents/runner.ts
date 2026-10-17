@@ -41,6 +41,11 @@ export interface SpawnContext {
   /** Default budgets; an AgentSpec's limits narrow them per child. */
   limits?: Partial<RunLimits>;
   signal?: AbortSignal;
+  /**
+   * Skill bodies for the child's own skill list (spec §6: bodies may be
+   * pre-injected per agent). A read failure never blocks the task.
+   */
+  skills?: (names: readonly string[]) => Promise<{ name: string; body: string }[]>;
   /** Trace fan-in: every child loop event, already carrying parentRunId. */
   onEvent?: (event: LoopEvent) => void;
 }
@@ -84,7 +89,24 @@ export async function runSubagent(
               reason: `"${name}" is outside ${spec.displayName}'s tool scope, so the agent cannot call it.`,
             };
           }
-          return context.policy!(name);
+          const base = context.policy!(name);
+          // Per-agent class policy can only narrow the caller's decision.
+          const mode = spec.policy?.[inferToolClass({ name })];
+          if (mode === "deny" && base.decision !== "deny") {
+            return {
+              decision: "deny",
+              rule: "agent-policy",
+              reason: `${spec.displayName}'s policy denies this class of tool.`,
+            };
+          }
+          if (mode === "ask" && base.decision === "auto") {
+            return {
+              decision: "ask",
+              rule: "agent-policy",
+              reason: `${spec.displayName}'s policy asks before this class of tool.`,
+            };
+          }
+          return base;
         };
 
   const model = context.modelForRole?.(spec.modelRole) ?? context.model;
@@ -93,11 +115,13 @@ export async function runSubagent(
       ? { ...context.limits, ...spec.limits }
       : undefined;
 
+  const system = await childSystem(spec, context);
+
   const execute = () =>
     collectRun({
       model,
       messages: [taskMessage(task)],
-      system: spec.system,
+      system,
       tools: [...scoped],
       agentLabel: spec.displayName,
       ...(context.onEvent !== undefined ? { onEvent: context.onEvent } : {}),
@@ -119,6 +143,34 @@ export async function runSubagent(
   }
 
   return deriveResult(spec, collected.summary, collected.events);
+}
+
+/**
+ * The child's prompt: its file body, plus bodies of the skills it lists
+ * (pre-injection — the other half of the on-demand design). A skills read
+ * failure is ignored: the task still runs without the extra guidance.
+ */
+async function childSystem(
+  spec: AgentSpec,
+  context: SpawnContext,
+): Promise<string> {
+  if (
+    spec.skills === undefined ||
+    spec.skills.length === 0 ||
+    context.skills === undefined
+  ) {
+    return spec.system;
+  }
+  try {
+    const loaded = await context.skills(spec.skills);
+    if (loaded.length === 0) return spec.system;
+    return [
+      spec.system,
+      ...loaded.map((skill) => `## Skill: ${skill.name}\n\n${skill.body.trim()}`),
+    ].join("\n\n");
+  } catch {
+    return spec.system;
+  }
 }
 
 /** Fresh task message: inputs first, then the task. No parent history, ever. */

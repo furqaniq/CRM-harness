@@ -286,6 +286,77 @@ describe("runSubagent", () => {
     });
   });
 
+  it("pre-injects the skill bodies an agent lists", async () => {
+    const recorder = recordingProvider([okScript]);
+    const asked: string[][] = [];
+    await runSubagent(
+      spec({ skills: ["entity-resolution", "never-delete"] }),
+      { prompt: "q" },
+      baseContext({
+        model: recorder.model,
+        skills: async (names) => {
+          asked.push([...names]);
+          return [
+            { name: "entity-resolution", body: "Search before write." },
+            { name: "never-delete", body: "Never delete a record." },
+          ];
+        },
+      }),
+    );
+
+    expect(asked).toEqual([["entity-resolution", "never-delete"]]);
+    const system = recorder.requests[0].system ?? "";
+    expect(system).toContain("You are the leads specialist.");
+    expect(system).toContain("## Skill: entity-resolution");
+    expect(system).toContain("Search before write.");
+    expect(system).toContain("Never delete a record.");
+  });
+
+  it("keeps the child running when a skill body cannot be read", async () => {
+    const recorder = recordingProvider([okScript]);
+    const result = await runSubagent(
+      spec({ skills: ["missing"] }),
+      { prompt: "q" },
+      baseContext({
+        model: recorder.model,
+        skills: async () => {
+          throw new Error("disk gone");
+        },
+      }),
+    );
+    expect(result.status).toBe("ok");
+    expect(recorder.requests[0].system).toBe("You are the leads specialist.");
+  });
+
+  it("applies a per-agent policy that only narrows the caller's decision", async () => {
+    const recorder = recordingProvider([
+      [
+        {
+          type: "tool_call",
+          toolCall: { id: "c1", name: "lead_create", arguments: '{"name":"Ada"}' },
+        },
+      ],
+      [
+        { type: "text", text: "Tried to create the lead." },
+        { type: "done", stop: "end" },
+      ],
+    ]);
+
+    const result = await runSubagent(
+      spec({ toolGlobs: ["lead_*"], policy: { write: "deny" } }),
+      { prompt: "Create the lead." },
+      baseContext({
+        model: recorder.model,
+        allTools: [tool("lead_create", () => ({ id: "L-1", verified: true }))],
+        policy: () => ({ decision: "auto", rule: "allow-list", reason: "Allowed." }),
+      }),
+    );
+
+    expect(result.status).toBe("partial");
+    expect(result.errors.join(" ")).toContain("policy denies");
+    expect(result.writes).toEqual([]);
+  });
+
   it("forwards child events with the spawning run's parentRunId", async () => {
     const events: LoopEvent[] = [];
     await runSubagent(spec(), { prompt: "q" }, baseContext({

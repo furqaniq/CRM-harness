@@ -1,5 +1,7 @@
 import type { RunLimits } from "../loop/types";
+import type { PolicyMode } from "../policy/types";
 import type { ModelRole } from "../providers/types";
+import type { ToolClass } from "../tools/classify";
 
 /**
  * Structured status a child hands back (spec §4 Subagents). Derived by the
@@ -26,6 +28,12 @@ export interface AgentSpec {
   canSpawn?: boolean;
   /** Per-child budgets applied over the run defaults. */
   limits?: Partial<RunLimits>;
+  /**
+   * Optional per-agent policy by tool class (spec §5 "Policy per … agent").
+   * It only narrows the caller's decision — an agent can turn auto into ask or
+   * deny, never the other way round (no privilege widening).
+   */
+  policy?: Partial<Record<ToolClass, PolicyMode>>;
   /** The prompt body: the child's system prompt. */
   system: string;
 }

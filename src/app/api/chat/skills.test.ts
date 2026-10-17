@@ -67,4 +67,11 @@ describe("skills in chat", () => {
 
     expect(text).toContain('Loaded the "starter" skill');
   });
+
+  it("pre-injects a skill for one turn with the /skill command", async () => {
+    const { events, text } = await chat("/skill starter");
+
+    expect(events.some((event) => event.type === "tool_start")).toBe(false);
+    expect(text).toContain('Following the "starter" skill for this turn');
+  });
 });

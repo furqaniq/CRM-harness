@@ -174,7 +174,8 @@ describe("POST /api/chat", () => {
     const labels = childStarts.map((frame) =>
       frame.type === "run_start" ? frame.agentLabel : undefined,
     );
-    expect(labels).toEqual(["Leads agent", "Inbox agent"]);
+    // Spawn order is not guaranteed; both lanes being present is.
+    expect([...labels].sort()).toEqual(["Inbox agent", "Leads agent"]);
     for (const frame of childStarts) {
       if (frame.type !== "run_start") continue;
       expect(frame.parentRunId).toBe(rootStart.runId);
@@ -185,8 +186,9 @@ describe("POST /api/chat", () => {
     const firstEnded = frames.findIndex(
       (frame) => frame.type === "run_end" && frame.parentRunId !== undefined,
     );
-    const secondStarted = frames.indexOf(childStarts[1]);
-    expect(secondStarted).toBeLessThan(firstEnded);
+    for (const start of childStarts) {
+      expect(frames.indexOf(start)).toBeLessThan(firstEnded);
+    }
 
     const childTools = frames
       .filter((frame) => frame.type === "tool_start" && frame.parentRunId !== undefined)
@@ -255,6 +257,46 @@ describe("POST /api/chat", () => {
     expect(leads).toHaveLength(leadsBefore + 1);
     expect(leads.at(-1)?.name).toBe("Ada Harness");
     expect(textOf(frames)).toContain("verified");
+  });
+
+  it("addresses one specialist directly with @agent", async () => {
+    const response = await POST(
+      chatRequest({ messages: [userTurn("@leads How many leads are open?")] }),
+    );
+    expect(response.status).toBe(200);
+
+    const frames = await readAll(response);
+    const children = frames.filter(
+      (frame) => frame.type === "run_start" && frame.parentRunId !== undefined,
+    );
+    expect(children).toHaveLength(1);
+    expect(children[0]).toMatchObject({ agentLabel: "Leads agent" });
+
+    const toolNames = frames
+      .filter((frame) => frame.type === "tool_start")
+      .map((frame) => (frame.type === "tool_start" ? frame.name : ""));
+    expect(toolNames[0]).toBe("spawn_agent");
+    expect(textOf(frames)).toContain("Leads agent");
+  });
+
+  it("rejects unknown agents and unusable /skill commands before streaming", async () => {
+    const unknownAgent = await POST(
+      chatRequest({ messages: [userTurn("@nobody do something")] }),
+    );
+    expect(unknownAgent.status).toBe(404);
+    expect((await unknownAgent.json()).error).toContain('No agent named "nobody"');
+
+    const noTask = await POST(chatRequest({ messages: [userTurn("@leads")] }));
+    expect(noTask.status).toBe(400);
+
+    const unknownSkill = await POST(
+      chatRequest({ messages: [userTurn("/skill no-such-skill")] }),
+    );
+    expect(unknownSkill.status).toBe(404);
+    expect((await unknownSkill.json()).error).toContain('No skill named "no-such-skill"');
+
+    const noName = await POST(chatRequest({ messages: [userTurn("/skill")] }));
+    expect(noName.status).toBe(400);
   });
 
   it("returns 404 for an unknown run id", async () => {

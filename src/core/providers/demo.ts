@@ -138,6 +138,31 @@ export function createDemoProvider(options: DemoProviderOptions = {}): ChatProvi
         return;
       }
 
+      // `/skill` pre-injects a body into the system prompt; say so instead of
+      // pretending the scripted model reasoned about it.
+      const skill = request.system?.match(/Skill in effect: ([a-z0-9][a-z0-9-]*)/);
+      if (skill) {
+        const chunks = [
+          `Following the "${skill[1]}" skill for this turn. `,
+          "Its body is pre-loaded in the system prompt; a real model would apply it to your request now.",
+        ];
+        for (const chunk of chunks) {
+          await wait(delayMs, signal);
+          if (signal?.aborted) {
+            yield { type: "done", stop: "cancelled" };
+            return;
+          }
+          yield { type: "text_delta", text: chunk };
+        }
+        yield {
+          type: "usage",
+          inputTokens: 0,
+          outputTokens: estimateTokens(chunks.join("")),
+        };
+        yield { type: "done", stop: "end" };
+        return;
+      }
+
       const chunks = demoReplyChunks(prompt);
       for (const chunk of chunks) {
         await wait(delayMs, signal);
@@ -202,6 +227,18 @@ const DEMO_SEND_BODY =
 const CREATE_LEAD = /\b(?:create|add|make|new)\b[^.?!]*\blead\b/i;
 
 const TOOL_RULES: DemoToolRule[] = [
+  {
+    // `@agent <task>`: the user addressed one specialist directly.
+    match: /^\s*@([a-z0-9][a-z0-9-]*)\b/i,
+    tool: "spawn_agent",
+    args: (prompt) => {
+      const match = prompt.match(/^\s*@([a-z0-9][a-z0-9-]*)\b[\s,:-]*([\s\S]*)$/i);
+      return {
+        agent: (match?.[1] ?? "").toLowerCase(),
+        task: (match?.[2] ?? "").trim(),
+      };
+    },
+  },
   {
     match: /\b(delet|remov|archiv|destroy|merg)\w*/i,
     tool: "lead_delete",
