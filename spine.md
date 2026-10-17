@@ -23,8 +23,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S12 | Write coordinator (locking, idempotency, read-after-write) | [x] | `6df3332` | yes |
 | S13 | Trace lanes UI | [x] | `50910fb` | yes |
 | S14 | Minimal test runner + first pass rates | [x] | `2f4a28b` | yes |
-| S15 | Skills system | [ ] | | |
-| S16 | Seed agents/skills/persona + Agents & Skills pages | [ ] | | |
+| S15 | Skills system | [x] | `15a77b7` | pending |
+| S16 | Seed agents/skills/persona + Agents & Skills pages | [x] | `c1a95c6` | pending |
 | S17 | Loops (interval/goal/watch) | [ ] | | |
 | S18 | Routines + scheduler | [ ] | | |
 | S19 | Kill switch + history + unattended policy | [ ] | | |
@@ -59,7 +59,15 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   coordinator 1/1, loop 2/2** (deterministic layer only; INT-05 and the workbook regression pack
   cannot be replicated honestly — the workbooks were never provided, so the rows are ours, see
   Known gaps)
-- [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
+- [x] M4 complete — all seed files load/validate: **18 skills**, **14 agents**, and
+  `persona/SOUL.maple.md` (the workbook-era personas Sophia/Eleanor fold into `maple`; our own
+  persona file replaces the missing `SOUL.maple.md` input). The agents page lists every file with
+  role, tool globs, skills, policy and limits (`docs/m4-agents.png`); the skills page lists, edits,
+  tests, imports and exports folders (`docs/m4-skills.png`). `/skill never-delete delete lead L-1001`
+  pre-injects that skill and the global deny pattern still refuses the call
+  (`docs/m4-skill-command.png`); `@leads How many leads are open?` spawns that specialist directly
+  and the lane answers from the real count (`docs/m4-agent-command.png`). Subagents with declared
+  skills get those bodies pre-injected; the chat catalog carries names and descriptions only.
 - [ ] M5 complete — seed routines run; unattended cannot live-effect; overlap/missed-run tested
 - [ ] M6 complete — row counts match workbooks; run all safe; xlsx export
 - [ ] M7 complete — clean-clone setup; secrets never to browser; embed demo; README complete
@@ -85,7 +93,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 - Policy enforcement is live in chat (S9): the route serves the simulator's tools through the
   policy engine; deny returns the model-visible "Denied by policy" result, ask (Owner mode off)
   is blocked with the reason because no approver is wired. There is still no interactive approval
-  card for `ask`; `registry.scoped()` has no consumer until agent files land (S16).
+  card for `ask`; `registry.scoped()` still has no consumer (agent scoping goes through
+  `scopeTools`).
 - The CRM simulator is a deliberate subset: ~30 tools covering the M2 gate paths, seeded in-memory
   data (leads/contacts/branches/automations/conversations), quirk switches in core only, and no
   delete tools at all — the deny demo has the model propose one anyway. Reset/snapshot/restore work
@@ -96,9 +105,14 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   The workbooks and INT-05 rows do not exist (missing inputs), so the row set is our own; the LLM
   judge, calibration and gold set (S22), workbook import (S20) and the lab UI / xlsx export (S23)
   are not built. The demo chat has no row where the planner authors a `depends_on` graph.
-- Seed agents are inline placeholders (`INTERIM_AGENTS` in `src/core/agents/seed.ts`) until S16
-  seed files land, and the root chat run still carries the full simulator tool set — the
-  orchestrator-minimal root scope arrives with those seed files.
+- Agents are file-driven now (`agents/<name>/AGENT.md`), but the root chat run still carries the
+  full simulator tool set rather than the orchestrator-minimal scope; a per-agent policy can only
+  narrow the caller's decision. `INTERIM_AGENTS` remains as a fallback when the agents folder is
+  missing entirely. The Agents page is read-only (edit the file); skills are editable in the UI.
+- Skills, agents and the persona are read from the filesystem at request time. Turbopack warns that
+  dynamic filesystem access traces the whole project (bundle size); revisit at deploy (D1/D2) and
+  note that serverless filesystems are read-only, so skill edits persist on a local checkout only
+  until storage lands (M7).
 
 ## Log
 
@@ -230,3 +244,22 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   First pass rates (all against the live route): **11/11 — policy 2/2, chat 2/2, artifacts 1/1,
   simulator 1/1, subagents 2/2, coordinator 1/1, loop 2/2**. 316 tests green (`pnpm verify`).
   **M3 gate reached** — ready for review before M4.
+- S15 done (`15a77b7`): skills system. `src/core/skills/` — one folder per skill with `SKILL.md`
+  (frontmatter `name`/`description` plus a body), strict name/description/body validation with
+  plain-language errors, catalog prompt carrying names and descriptions only, on-demand
+  `read_skill` tool (read-classed), and a filesystem store with create/update/remove/import
+  (JSON bundle or one SKILL.md)/export (one `.md` or a `skills.json` bundle). `POST /api/skills`
+  serves the list/get/save/remove/test/import/export actions; the `/skills` page lists, edits,
+  tests (validity, size, approximate tokens, body preview), imports and exports. Chat adds the
+  catalog to the system prompt and offers `read_skill`, so bodies load only when the model asks.
+  337 tests green (`pnpm verify`); screenshot `docs/m4-skills.png`.
+- S16 done (`c1a95c6`): seed content and commands. 18 spec skills under `skills/`, 14 agents under
+  `agents/<name>/AGENT.md` (display name, description, model role, tool globs, skills, can-spawn,
+  limits, per-class policy, prompt body) with a parser/validator and a file-driven roster in chat,
+  plus `persona/SOUL.maple.md` loaded at request time (built-in fallback). Subagents pre-inject the
+  bodies of the skills their file lists; per-agent class policy only narrows the caller's decision.
+  The `/agents` page lists every seed file with its tools, skills, policy and limits. `/skill <name>
+  [message]` pre-injects one skill for that turn and `@<agent> <task>` addresses a specialist
+  directly (validated before streaming, 400/404 with plain messages). 355 tests green
+  (`pnpm verify`); screenshots `docs/m4-agents.png`, `docs/m4-skill-command.png`,
+  `docs/m4-agent-command.png`. **M4 gate reached** — ready for review before M5.

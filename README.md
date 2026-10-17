@@ -15,7 +15,7 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0–M3 complete (S1–S14).** Implemented so far: scaffold, design tokens, app shell,
+**Status: M0–M4 complete (S1–S16).** Implemented so far: scaffold, design tokens, app shell,
 CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible / scripted demo model), the
 core agent loop, the streaming chat (`POST /api/chat` runs the loop and streams SSE frames that the
 browser renders as text, step traces and token/cost usage, with Stop cancelling a run mid-flight),
@@ -31,7 +31,13 @@ the write coordinator (per-record locks, idempotent writes, read-after-write ver
 results, 10-minute send guard), the trace lanes UI (specialists stream into side-by-side lane cards
 under the root reply), and the minimal Test Lab (`src/core/lab/` — deterministic checks over 11
 own safe rows executed against the real chat route with pass rates per module; first run: 11/11).
-Next up: M4 — skills system and seed agents/skills/persona.
+Skills are folders of `SKILL.md` under `skills/` (18 seeded): the prompt carries names and
+descriptions only and bodies load on demand through `read_skill`, or are pre-injected for a subagent
+that lists them. The `/skills` page lists, edits, tests, imports and exports; chat understands
+`/skill <name> [message]` and `@<agent> <task>`. Agents are files under `agents/<name>/AGENT.md`
+(14 seeded: display name, model role, tool globs, skills, can-spawn, limits, per-class policy and
+the prompt body) and `/agents` lists them; the persona is `persona/SOUL.maple.md` and is reloaded
+per request. Next up: M5 — loops, routines and the scheduler.
 
 ## Setup
 
@@ -61,8 +67,8 @@ src/
     api/chat/   SSE chat route: runs the agent loop, accepts { cancelRunId }
     api/mcp/    MCP action route: add/update/remove/test/discover/call/import, returns a snapshot
   components/   shell (rail, panel, top bar, live token meter), chat UI (workspace, reducer with
-                per-agent lane traces, prompt box) and the MCP workspace (server cards, tools table,
-                tool console)
+                per-agent lane traces, prompt box), the MCP workspace (server cards, tools table,
+                tool console), the Skills editor and the Agents browser
   design/       Design tokens mirrored in TS, enforced by tokens.test.ts
   core/         Local engine library:
     providers/  neutral chat types, Anthropic + OpenAI SSE adapters, provider registry, scripted demo model
@@ -86,8 +92,15 @@ src/
     planner/    task graph validation, dependency waves, wave runner with failure isolation
     coordinator/ per-record locks, idempotency, read-after-write verification, 10-minute send guard
     lab/        minimal Test Lab: deterministic checks, safe row set, runLab() pass-rate reports
+    skills/     skill files: frontmatter parse/validate, catalog prompt, read_skill, folder store
+    chat/       `/skill` and `@agent` command parsing
+    persona/    editable SOUL.maple.md loader with a built-in fallback
   scripts/      demo-mcp-server.mjs — bundled stdio MCP demo server (sample tools, not Maple)
-  (routines, skills arrive with their milestones)
+  (routines arrive with M5)
+
+agents/         one AGENT.md per specialist (14 seeded), parsed and validated into the roster
+skills/         one SKILL.md per skill (18 seeded), editable from the Skills page
+persona/        SOUL.maple.md — the editable base persona
 ```
 
 Spec assets the plan expects (`fixtures/`, `design/`, workbooks, `SOUL.maple.md`) are **not in the
@@ -123,7 +136,8 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
   (screenshot), two test workbooks and `SOUL.maple.md`. None exist in this repo yet. Work proceeds
   against the spec's own tool names plus a simulator until they are provided — which means the
   workbooks' rows (including INT-05) cannot be replicated: the Test Lab runs our own safe row set
-  instead, reported honestly as such.
+  instead, reported honestly as such. The persona and every seed agent/skill are our own writing
+  from the spec's tables, not the missing source files.
 - **The Test Lab is layer 1 only (deterministic checks).** `src/core/lab/` runs 11 own safe rows
   against the real chat route and reports pass rates per module (first run: 11/11). The LLM judge,
   calibration and gold set (S22), workbook import (S20) and the lab UI with xlsx export (S23) are
@@ -161,13 +175,17 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
   handle read after a restart reports "unknown handle" in plain language; there is no LRU cap or
   persistence yet (storage milestone). Chat enables artifacts, but handles only survive while the
   dev server process lives.
-- **Seed agents are interim placeholders.** `INTERIM_AGENTS` (`src/core/agents/seed.ts`) defines
-  leads/inbox/contacts specialists inline until seed files land (M4); the root chat run still holds
-  the full simulator tool set rather than the orchestrator-minimal scope, and per-agent policy files
-  arrive with those seeds. The demo model cannot author a planner `depends_on` graph from chat, so
-  the planner has no chat-driven lab row.
-- **Agents, Skills, Loops, Providers, Runs, Test Lab and Settings routes are placeholders**
-  (each states the milestone it arrives in). Chat/, MCP and the shell are live.
+- **Agents are files now; the root chat run still holds the full simulator tool set** rather than
+  the orchestrator-minimal scope, and per-agent policy can only narrow the caller's decision.
+  `INTERIM_AGENTS` is only a fallback when the `agents/` folder is missing. The Agents page is
+  read-only (edit the file); skills are editable in the UI. The demo model cannot author a planner
+  `depends_on` graph from chat, so the planner has no chat-driven lab row.
+- **Filesystem content is request-time and local.** Skills, agents and the persona are read from
+  disk on each request; Turbopack warns that this traces the whole project (bundle size), and a
+  serverless filesystem is read-only, so skill edits persist on a local checkout only until storage
+  lands (M7).
+- **Loops, Providers, Runs, Test Lab and Settings routes are placeholders** (each states the
+  milestone it arrives in). Chat, MCP, Skills, Agents and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler
   (M5, 15-minute loops and cron routines) needs always-on execution that Vercel Cron cannot provide
   on its own — to be resolved or recorded as a gap at the M5 gate.
