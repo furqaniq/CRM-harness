@@ -23,8 +23,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S12 | Write coordinator (locking, idempotency, read-after-write) | [x] | `6df3332` | yes |
 | S13 | Trace lanes UI | [x] | `50910fb` | yes |
 | S14 | Minimal test runner + first pass rates | [x] | `2f4a28b` | yes |
-| S15 | Skills system | [x] | `15a77b7` | pending |
-| S16 | Seed agents/skills/persona + Agents & Skills pages | [x] | `c1a95c6` | pending |
+| S15 | Skills system | [x] | `15a77b7` | yes |
+| S16 | Seed agents/skills/persona + Agents & Skills pages | [x] | `c1a95c6` | yes |
 | S17 | Loops (interval/goal/watch) | [ ] | | |
 | S18 | Routines + scheduler | [ ] | | |
 | S19 | Kill switch + history + unattended policy | [ ] | | |
