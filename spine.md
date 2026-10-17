@@ -14,8 +14,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S3 | Provider abstraction + model config | [x] | `1ba2a26` | yes |
 | S4 | Core agent loop (stream, parallel tools, limits, cancel) | [x] | `6a83c9d` | yes |
 | S5 | Streaming chat UI, glowing prompt box, stop, token meter | [x] | `7f10429` | yes |
-| S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [x] | `2849ddb` | pending |
-| S7 | Policy engine + tool scoping | [ ] | | |
+| S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [x] | `2849ddb` | yes |
+| S7 | Policy engine + tool scoping | [x] | `235df2f` | pending |
 | S8 | Large-result artifacts | [ ] | | |
 | S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [ ] | | |
 | S10 | Subagent runner (spawn_agent/spawn_agents) | [ ] | | |
@@ -42,8 +42,9 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 - [x] M0 complete — shell matches spec section 1, screenshot saved to `docs/` (`docs/m0-shell.png`, `docs/m0-shell-mobile.png`)
 - [x] M1 complete — provider tested against an injected fetch, chat streams over SSE, stop mid-run works, token meter tracks real usage; scripted demo model (`docs/m1-chat.png`, `docs/m1-chat-mobile.png`)
-- [ ] M2 complete — simulator + remote server connect (S9); deny pattern blocks delete (S7);
-  270 KB result handled (S8); MCP manager + tool registry landed with S6
+- [ ] M2 complete — simulator (S9); remote MCP server connect done with S6 (stdio/HTTP/SSE
+  transports tested end-to-end); deny pattern blocks delete tools (enforced in core by S7 — the
+  gate still needs an end-to-end demo in chat); 270 KB result handled (S8)
 - [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
 - [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
 - [ ] M5 complete — seed routines run; unattended cannot live-effect; overlap/missed-run tested
@@ -68,6 +69,11 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 - The stdio MCP transport spawns a local child process — fine for `pnpm dev` and tests, not
   deployable on Vercel serverless (D1/D2). Bundled demo tools are samples, not the real Maple CRM;
   the "Maple CRM" entry is a disabled placeholder.
+- Policy and scoping (S7) are core-only: the chat route exposes no tools yet, so the UI never
+  exercises policy; there is no interactive approval card for `ask` (Owner mode on keeps
+  live-effect `auto`); `registry.scoped()` has no consumer until agent files land (S16).
+  For the M2 gate's "deny pattern blocks delete tools" demo, chat must expose registry tools and
+  the demo model must be able to script tool calls — neither exists yet (planned with S9).
 
 ## Log
 
@@ -120,3 +126,18 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   lead JSON, class survives rediscovery, plain-language failure for an unreachable server).
   147 tests green (`pnpm verify`), screenshots `docs/m2-mcp.png`, `docs/m2-mcp-tools.png`,
   `docs/m2-mcp-mobile.png`. S7 (policy engine) next.
+- S7 done (`235df2f`): policy engine + tool scoping. `src/core/policy/` decides auto/ask/deny per
+  call in the spec's order — global deny pattern on the tool name first (delete, remove, archive,
+  destroy, merge beats every allow list), then scope deny globs, scope allow globs (explicit
+  operator intent), then the most specific scope's per-class mode (workspace < agent < routine),
+  then the defaults: read/write auto, live-effect ask, auto in interactive chat only with Owner
+  mode on, denied unattended unless allowlisted, destructive deny; `ask` in an unattended run
+  becomes deny because nobody can approve. Reasons are plain language, safe for traces and for the
+  model. `src/core/tools/` grew a glob matcher and `scopeTools` (fails closed: empty scope = no
+  tools; deny-pattern tools are never in anybody's context), plus `registry.scoped()`. The loop now
+  takes `policy` and `approve`: deny returns a model-visible "Denied by policy" result without
+  executing, ask waits for the approver (none connected → blocked with the reason), and `tool_start`
+  carries `{ decision, reason }` for ask/deny so the UI can render it later. 191 tests green
+  (`pnpm verify`). Known gap recorded: chat exposes no tools yet, so policy has no UI demo until
+  the simulator step; the M2 gate demo needs chat to serve registry tools and the demo model to
+  script tool calls. S8 (large-result artifacts) next.
