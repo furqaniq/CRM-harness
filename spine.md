@@ -16,8 +16,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S5 | Streaming chat UI, glowing prompt box, stop, token meter | [x] | `7f10429` | yes |
 | S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [x] | `2849ddb` | yes |
 | S7 | Policy engine + tool scoping | [x] | `235df2f` | yes |
-| S8 | Large-result artifacts | [x] | `34009a4` | pending |
-| S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [ ] | | |
+| S8 | Large-result artifacts | [x] | `34009a4` | yes |
+| S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [x] | `0b3adf6` | pending |
 | S10 | Subagent runner (spawn_agent/spawn_agents) | [ ] | | |
 | S11 | Planner (task graph, parallel fanout, failure isolation) | [ ] | | |
 | S12 | Write coordinator (locking, idempotency, read-after-write) | [ ] | | |
@@ -42,10 +42,12 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 
 - [x] M0 complete — shell matches spec section 1, screenshot saved to `docs/` (`docs/m0-shell.png`, `docs/m0-shell-mobile.png`)
 - [x] M1 complete — provider tested against an injected fetch, chat streams over SSE, stop mid-run works, token meter tracks real usage; scripted demo model (`docs/m1-chat.png`, `docs/m1-chat-mobile.png`)
-- [ ] M2 complete — simulator (S9); remote MCP server connect done with S6 (stdio/HTTP/SSE
-  transports tested end-to-end); deny pattern blocks delete tools (enforced in core by S7 — the
-  gate still needs an end-to-end demo in chat); 270 KB result handled (done in core by S8 — the
-  gate still needs a chat demo once the simulator supplies the tool)
+- [x] M2 complete — simulator (S9); remote MCP server connect done with S6 (stdio/HTTP/SSE
+  transports tested end-to-end); deny pattern blocks delete tools (chat demo: `docs/m2-chat-deny.png`
+  — the demo model proposes `lead_delete`, policy denies it before any executor, and the answer says
+  so); 270 KB result handled (chat demo: `docs/m2-chat-artifact.png` — the 405 KB automation list is
+  summarized with its exact 950-item count plus a handle; `docs/m2-chat-read.png` pages a slice;
+  `docs/m2-chat-outbox.png` shows a send queued to the simulator outbox)
 - [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
 - [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
 - [ ] M5 complete — seed routines run; unattended cannot live-effect; overlap/missed-run tested
@@ -70,11 +72,16 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 - The stdio MCP transport spawns a local child process — fine for `pnpm dev` and tests, not
   deployable on Vercel serverless (D1/D2). Bundled demo tools are samples, not the real Maple CRM;
   the "Maple CRM" entry is a disabled placeholder.
-- Policy and scoping (S7) are core-only: the chat route exposes no tools yet, so the UI never
-  exercises policy; there is no interactive approval card for `ask` (Owner mode on keeps
-  live-effect `auto`); `registry.scoped()` has no consumer until agent files land (S16).
-  For the M2 gate's "deny pattern blocks delete tools" demo, chat must expose registry tools and
-  the demo model must be able to script tool calls — neither exists yet (planned with S9).
+- Policy enforcement is live in chat (S9): the route serves the simulator's tools through the
+  policy engine; deny returns the model-visible "Denied by policy" result, ask (Owner mode off)
+  is blocked with the reason because no approver is wired. There is still no interactive approval
+  card for `ask`; `registry.scoped()` has no consumer until agent files land (S16).
+- The CRM simulator is a deliberate subset: ~30 tools covering the M2 gate paths, seeded in-memory
+  data (leads/contacts/branches/automations/conversations), quirk switches in core only, and no
+  delete tools at all — the deny demo has the model propose one anyway. Reset/snapshot/restore work
+  in core but are not yet driven by the UI or Test Lab.
+- Artifacts in chat are in-memory per process: handles survive only while the dev server lives;
+  a restart reports "unknown handle" in plain language (persistence arrives with storage).
 
 ## Log
 
@@ -155,3 +162,21 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   persistence until storage); chat still exposes no tools, so the gate's chat demo waits on S9.
   S9 (CRM simulator) next — it closes M2 once chat serves registry tools through policy and the
   demo model can script tool calls for the gate demo.
+- S9 done (`0b3adf6`): CRM simulator closes M2. `src/core/simulator/` seeds a deterministic Maple
+  (5 leads with a twin-contact quirk, 4 contacts, branches incl. two "San Diego" and a Reno with no
+  agents, 950 automations ≈ 405 KB, 22 conversations, users with an owner role) and exposes ~30
+  tools: reads, lead/contact create+update+transfer with read-back-after-write, campaign/drip
+  controls, template/outbox sends with a duplicate guard, role-scoped inbox. Quirk switches cover
+  intermittent branch_list failures, a campaign-step wrong-field bug, company-list validation with
+  a Levenshtein suggestion, unsubscribed-contact hiding, draft-drip refusal and a non-owner
+  pipeline_create permission gap. `db.reset/snapshot/restore` support tests and the UI. Chat now
+  runs the simulator's tools through the policy engine with artifacts enabled: the demo model
+  routes prompts to tool calls (delete-shaped prompts deliberately propose `lead_delete`, which
+  policy denies before any executor; answers on the second turn are derived from the real tool
+  result — denial, artifact summary with handle, count, outbox queue). Owner mode is sent from the
+  shell (`ShellContext`) and gates live-effect calls to ask when off. The 405 KB automation list is
+  summarized with its exact 950-item count (`summarizeResult` now finds counts in any array-valued
+  field, not just LIST_KEYS). Browser-verified M2 gate: deny (`docs/m2-chat-deny.png`), artifact
+  (`docs/m2-chat-artifact.png`), artifact slice read (`docs/m2-chat-read.png`), outbox
+  (`docs/m2-chat-outbox.png`). 240 tests green (`pnpm verify`). **M2 gate reached** — ready for
+  review before M3.
