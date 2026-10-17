@@ -17,12 +17,12 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [x] | `2849ddb` | yes |
 | S7 | Policy engine + tool scoping | [x] | `235df2f` | yes |
 | S8 | Large-result artifacts | [x] | `34009a4` | yes |
-| S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [x] | `0b3adf6` | pending |
-| S10 | Subagent runner (spawn_agent/spawn_agents) | [ ] | | |
-| S11 | Planner (task graph, parallel fanout, failure isolation) | [ ] | | |
-| S12 | Write coordinator (locking, idempotency, read-after-write) | [ ] | | |
-| S13 | Trace lanes UI | [ ] | | |
-| S14 | Minimal test runner + first pass rates | [ ] | | |
+| S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [x] | `0b3adf6` | yes |
+| S10 | Subagent runner (spawn_agent/spawn_agents) | [x] | `2a0404c` | pending |
+| S11 | Planner (task graph, parallel fanout, failure isolation) | [x] | `401be23` | pending |
+| S12 | Write coordinator (locking, idempotency, read-after-write) | [x] | `6df3332` | pending |
+| S13 | Trace lanes UI | [x] | `50910fb` | pending |
+| S14 | Minimal test runner + first pass rates | [x] | `2f4a28b` | pending |
 | S15 | Skills system | [ ] | | |
 | S16 | Seed agents/skills/persona + Agents & Skills pages | [ ] | | |
 | S17 | Loops (interval/goal/watch) | [ ] | | |
@@ -48,7 +48,17 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   so); 270 KB result handled (chat demo: `docs/m2-chat-artifact.png` — the 405 KB automation list is
   summarized with its exact 950-item count plus a handle; `docs/m2-chat-read.png` pages a slice;
   `docs/m2-chat-outbox.png` shows a send queued to the simulator outbox)
-- [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
+- [x] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates.
+  PAR-04 (`docs/m3-lanes.png`): two specialists spawn from one message and their run lanes render
+  side by side, the second child starting before the first finishes (overlap proven in
+  `route.test.ts`); PAR-17 (`docs/m3-verified-write.png`): one lead created through a specialist,
+  read back by the coordinator, answer reports verified without asking. Read-after-write is covered
+  by the coordinator suite (per-record locks never drop updates, in-flight create collapse,
+  10-minute send guard). First pass rates from the S14 lab run against the live chat route:
+  **11/11 overall — policy 2/2, chat 2/2, artifacts 1/1, simulator 1/1, subagents 2/2,
+  coordinator 1/1, loop 2/2** (deterministic layer only; INT-05 and the workbook regression pack
+  cannot be replicated honestly — the workbooks were never provided, so the rows are ours, see
+  Known gaps)
 - [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
 - [ ] M5 complete — seed routines run; unattended cannot live-effect; overlap/missed-run tested
 - [ ] M6 complete — row counts match workbooks; run all safe; xlsx export
@@ -82,6 +92,13 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   in core but are not yet driven by the UI or Test Lab.
 - Artifacts in chat are in-memory per process: handles survive only while the dev server lives;
   a restart reports "unknown handle" in plain language (persistence arrives with storage).
+- Test Lab (S14) is layer 1 only: deterministic checks (`src/core/lab/`) over the spec's safe rows.
+  The workbooks and INT-05 rows do not exist (missing inputs), so the row set is our own; the LLM
+  judge, calibration and gold set (S22), workbook import (S20) and the lab UI / xlsx export (S23)
+  are not built. The demo chat has no row where the planner authors a `depends_on` graph.
+- Seed agents are inline placeholders (`INTERIM_AGENTS` in `src/core/agents/seed.ts`) until S16
+  seed files land, and the root chat run still carries the full simulator tool set — the
+  orchestrator-minimal root scope arrives with those seed files.
 
 ## Log
 
@@ -178,5 +195,38 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   summarized with its exact 950-item count (`summarizeResult` now finds counts in any array-valued
   field, not just LIST_KEYS). Browser-verified M2 gate: deny (`docs/m2-chat-deny.png`), artifact
   (`docs/m2-chat-artifact.png`), artifact slice read (`docs/m2-chat-read.png`), outbox
-  (`docs/m2-chat-outbox.png`). 240 tests green (`pnpm verify`). **M2 gate reached** — ready for
-  review before M3.
+   (`docs/m2-chat-outbox.png`). 240 tests green (`pnpm verify`). **M2 gate reached** — ready for
+   review before M3.
+- S10 done (`2a0404c`): subagent runner. `src/core/agents/` — `AgentSpec` (glob tool scopes, model
+  roles, displayName, canSpawn), `spawn_agent`/`spawn_agents` tools (fail-closed scoping, depth 2,
+  max 6 parallel via a semaphore, per-child budgets, fresh contexts, parent linkage), derive
+  statuses ok/blocked/timeout/error/limit and write extraction for the coordinator. Spawn tools are
+  built per run from agent specs (`buildSpawnTools`) so chat and routines share them. 16 tests.
+- S11 done (`401be23`): planner. `src/core/planner/` — `validatePlan` (unique ids, resolvable and
+  acyclic `depends_on`), `planWaves` (dependency waves for parallel fanout), `runPlan`
+  (wave-by-wave with failure isolation: a failed task skips only its dependents). `spawn_agents`
+  accepts `depends_on` so a batch runs in waves. 13 tests.
+- S12 done (`6df3332`): write coordinator. `src/core/coordinator/` — per-record locks (parallel
+  calls on one record serialize with no lost updates; different records run concurrently),
+  idempotency with stable keys and TTL (a duplicate in-flight call collapses onto one write),
+  read-after-write verification (`verifyWith` maps create/update tools to a read tool and stamps
+  `verified: true/false` on the result), a 10-minute send guard, and `coordinateTools()` which the
+  chat route now applies to every simulator tool. 16 tests.
+- S13 done (`50910fb`): trace lanes + spawn in chat. Chat route builds spawn tools over
+  `INTERIM_AGENTS`, merges child event streams into the SSE response through a new `EventMux`
+  (interleaves queued child events with the parent stream), and `chatState` routes events with a
+  `parentRunId` into per-child lanes — the parent reply is untouched by child turns, lane usage
+  still counts toward the session meter, and the root `run_start` remains the only run the Stop
+  button targets. Trace cards render lanes side by side (`N agents` chip in the header). Fixed a
+  batch-spawn bug where children of `spawn_agents` lost `parentRunId` (no lanes), and nested
+  record id detection now sees simulator `{created}`/`{updated}` wrappers. Demo model grew
+  parallel/child/create routing and spawn narration. Browser demos: `docs/m3-lanes.png`,
+  `docs/m3-verified-write.png`. 305 tests.
+- S14 done (`2f4a28b`): minimal Test Lab. `src/core/lab/` — check kinds (`tool_called`,
+  `parallel_share_step`, `steps_sequential`, `read_back_present`, `children_started`,
+  `first_line_finding`, `no_internal_ids`, `no_confirmation_question`, `text_contains`,
+  `max_chars`), 11 own safe rows across policy/chat/artifacts/simulator/subagents/coordinator/loop,
+  and `runLab()` which executes rows against the real chat route and reports pass rates per module.
+  First pass rates (all against the live route): **11/11 — policy 2/2, chat 2/2, artifacts 1/1,
+  simulator 1/1, subagents 2/2, coordinator 1/1, loop 2/2**. 316 tests green (`pnpm verify`).
+  **M3 gate reached** — ready for review before M4.

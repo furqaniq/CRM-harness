@@ -15,7 +15,7 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0, M1 and M2 complete (S1–S9).** Implemented so far: scaffold, design tokens, app shell,
+**Status: M0–M3 complete (S1–S14).** Implemented so far: scaffold, design tokens, app shell,
 CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible / scripted demo model), the
 core agent loop, the streaming chat (`POST /api/chat` runs the loop and streams SSE frames that the
 browser renders as text, step traces and token/cost usage, with Stop cancelling a run mid-flight),
@@ -24,11 +24,14 @@ the tool registry, and the `/mcp` workspace backed by `POST /api/mcp`), the poli
 pattern, per-scope auto/ask/deny by tool class with Owner-mode and unattended rules, glob allow/deny
 lists, agent tool scoping), large-result artifacts (20 KB threshold; over that, the model gets a
 summary with the exact item count plus a handle, and `read_artifact` pages the payload back in
-slices), and the in-memory CRM simulator (~30 Maple-shaped tools, deterministic seed, deliberate
-quirks, outbox-only sends, reset/snapshot). Chat now serves the simulator's tools through the policy
-engine with artifacts enabled — the M2 gate demos (deny pattern blocks a delete call, a 270 KB+
-automation list is handled as an artifact, sends land in the outbox) run end to end in the browser.
-Next up: M3 — subagents, planner, write coordinator.
+slices), the in-memory CRM simulator (~30 Maple-shaped tools, deterministic seed, deliberate
+quirks, outbox-only sends, reset/snapshot), subagents (`spawn_agent`/`spawn_agents` with fail-closed
+tool scopes, depth 2, max 6 parallel), the planner (validated task graphs run in dependency waves),
+the write coordinator (per-record locks, idempotent writes, read-after-write verification stamped on
+results, 10-minute send guard), the trace lanes UI (specialists stream into side-by-side lane cards
+under the root reply), and the minimal Test Lab (`src/core/lab/` — deterministic checks over 11
+own safe rows executed against the real chat route with pass rates per module; first run: 11/11).
+Next up: M4 — skills system and seed agents/skills/persona.
 
 ## Setup
 
@@ -57,13 +60,15 @@ src/
   app/          Next.js routes inside the (shell) route group, layout, design tokens (globals.css)
     api/chat/   SSE chat route: runs the agent loop, accepts { cancelRunId }
     api/mcp/    MCP action route: add/update/remove/test/discover/call/import, returns a snapshot
-  components/   shell (rail, panel, top bar, live token meter), chat UI (workspace, reducer,
-                prompt box) and the MCP workspace (server cards, tools table, tool console)
+  components/   shell (rail, panel, top bar, live token meter), chat UI (workspace, reducer with
+                per-agent lane traces, prompt box) and the MCP workspace (server cards, tools table,
+                tool console)
   design/       Design tokens mirrored in TS, enforced by tokens.test.ts
   core/         Local engine library:
     providers/  neutral chat types, Anthropic + OpenAI SSE adapters, provider registry, scripted demo model
     models/     model configs, roles, fallback chains, token and cost accounting
-    events/     SSE encode/decode shared by the route and the browser
+    events/     SSE encode/decode shared by the route and the browser; EventMux merges subagent
+                streams into the parent chat stream
     loop/       agent loop: context assembly, streaming, parallel tool calls, limits, cancellation,
                 policy consulted before every tool call (deny blocks, ask waits for an approver),
                 artifactization of oversized tool results
@@ -77,8 +82,12 @@ src/
                 and glob matching for scopes and allow/deny lists
     simulator/  in-memory CRM: seeded leads/contacts/branches/automations/conversations, ~30
                 Maple-shaped tools, quirk switches, outbox-only sends, reset/snapshot/restore
+    agents/     subagent runner: AgentSpec, spawn tools, concurrency/depth limits, interim agents
+    planner/    task graph validation, dependency waves, wave runner with failure isolation
+    coordinator/ per-record locks, idempotency, read-after-write verification, 10-minute send guard
+    lab/        minimal Test Lab: deterministic checks, safe row set, runLab() pass-rate reports
   scripts/      demo-mcp-server.mjs — bundled stdio MCP demo server (sample tools, not Maple)
-  (policy, planner, coordinator, routines, skills arrive with their milestones)
+  (routines, skills arrive with their milestones)
 ```
 
 Spec assets the plan expects (`fixtures/`, `design/`, workbooks, `SOUL.maple.md`) are **not in the
@@ -112,7 +121,13 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
 
 - **Missing spec inputs.** The spec expects `fixtures/` (real CRM tool definitions), `design/`
   (screenshot), two test workbooks and `SOUL.maple.md`. None exist in this repo yet. Work proceeds
-  against the spec's own tool names plus a simulator until they are provided.
+  against the spec's own tool names plus a simulator until they are provided — which means the
+  workbooks' rows (including INT-05) cannot be replicated: the Test Lab runs our own safe row set
+  instead, reported honestly as such.
+- **The Test Lab is layer 1 only (deterministic checks).** `src/core/lab/` runs 11 own safe rows
+  against the real chat route and reports pass rates per module (first run: 11/11). The LLM judge,
+  calibration and gold set (S22), workbook import (S20) and the lab UI with xlsx export (S23) are
+  not built; artifact handles (`art_…`) are excluded from the no-internal-ids check by design.
 - **The session token meter is client-side and its budget is a placeholder.** `SESSION_TOKEN_BUDGET`
   is 100,000 until spend caps (M7) define the real limits; usage lives in React state, so a page
   refresh resets it. There is no server-side ledger or enforcement yet.
@@ -146,6 +161,11 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
   handle read after a restart reports "unknown handle" in plain language; there is no LRU cap or
   persistence yet (storage milestone). Chat enables artifacts, but handles only survive while the
   dev server process lives.
+- **Seed agents are interim placeholders.** `INTERIM_AGENTS` (`src/core/agents/seed.ts`) defines
+  leads/inbox/contacts specialists inline until seed files land (M4); the root chat run still holds
+  the full simulator tool set rather than the orchestrator-minimal scope, and per-agent policy files
+  arrive with those seeds. The demo model cannot author a planner `depends_on` graph from chat, so
+  the planner has no chat-driven lab row.
 - **Agents, Skills, Loops, Providers, Runs, Test Lab and Settings routes are placeholders**
   (each states the milestone it arrives in). Chat/, MCP and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler
