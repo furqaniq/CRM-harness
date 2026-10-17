@@ -18,11 +18,11 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S7 | Policy engine + tool scoping | [x] | `235df2f` | yes |
 | S8 | Large-result artifacts | [x] | `34009a4` | yes |
 | S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [x] | `0b3adf6` | yes |
-| S10 | Subagent runner (spawn_agent/spawn_agents) | [x] | `2a0404c` | pending |
-| S11 | Planner (task graph, parallel fanout, failure isolation) | [x] | `401be23` | pending |
-| S12 | Write coordinator (locking, idempotency, read-after-write) | [x] | `6df3332` | pending |
-| S13 | Trace lanes UI | [x] | `50910fb` | pending |
-| S14 | Minimal test runner + first pass rates | [x] | `2f4a28b` | pending |
+| S10 | Subagent runner (spawn_agent/spawn_agents) | [x] | `2a0404c` | yes |
+| S11 | Planner (task graph, parallel fanout, failure isolation) | [x] | `401be23` | yes |
+| S12 | Write coordinator (locking, idempotency, read-after-write) | [x] | `6df3332` | yes |
+| S13 | Trace lanes UI | [x] | `50910fb` | yes |
+| S14 | Minimal test runner + first pass rates | [x] | `2f4a28b` | yes |
 | S15 | Skills system | [ ] | | |
 | S16 | Seed agents/skills/persona + Agents & Skills pages | [ ] | | |
 | S17 | Loops (interval/goal/watch) | [ ] | | |
