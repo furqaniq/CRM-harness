@@ -45,6 +45,23 @@ export function summarizeResult(content: string): ResultSummary {
             };
           }
         }
+        // Any other array-valued field still counts — tools wrap lists under
+        // their own names ("automations", "leads"). Longest array wins.
+        let listKey: string | null = null;
+        let listLength = 0;
+        for (const [key, value] of Object.entries(record)) {
+          if (Array.isArray(value) && value.length >= listLength) {
+            listKey = key;
+            listLength = value.length;
+          }
+        }
+        if (listKey !== null) {
+          return {
+            summary: `an object whose "${listKey}" holds ${listLength.toLocaleString("en-US")} items`,
+            itemCount: listLength,
+            preview: clip(content),
+          };
+        }
         const fields = Object.keys(record).length;
         return {
           summary: `a JSON object with ${fields} field${fields === 1 ? "" : "s"}`,

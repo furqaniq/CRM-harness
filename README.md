@@ -15,17 +15,20 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0 and M1 complete; M2 in progress (S6–S8 done).** Implemented so far: scaffold,
-design tokens, app shell, CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible /
-scripted demo model), the core agent loop, the streaming chat (`POST /api/chat` runs the loop and
-streams SSE frames that the browser renders as text, step traces and token/cost usage, with Stop
-cancelling a run mid-flight), the MCP layer (stdio / streamable-HTTP / legacy-SSE transports,
-handshake + tool discovery, classing, the tool registry, and the `/mcp` workspace backed by
-`POST /api/mcp`), the policy engine (global deny pattern, per-scope auto/ask/deny by tool class
-with Owner-mode and unattended rules, glob allow/deny lists, agent tool scoping), and large-result
-artifacts (20 KB threshold; over that, the model gets a summary with the exact item count plus a
-handle, and `read_artifact` pages the payload back in slices). Next up: the CRM simulator, which
-finishes M2.
+**Status: M0, M1 and M2 complete (S1–S9).** Implemented so far: scaffold, design tokens, app shell,
+CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible / scripted demo model), the
+core agent loop, the streaming chat (`POST /api/chat` runs the loop and streams SSE frames that the
+browser renders as text, step traces and token/cost usage, with Stop cancelling a run mid-flight),
+the MCP layer (stdio / streamable-HTTP / legacy-SSE transports, handshake + tool discovery, classing,
+the tool registry, and the `/mcp` workspace backed by `POST /api/mcp`), the policy engine (global deny
+pattern, per-scope auto/ask/deny by tool class with Owner-mode and unattended rules, glob allow/deny
+lists, agent tool scoping), large-result artifacts (20 KB threshold; over that, the model gets a
+summary with the exact item count plus a handle, and `read_artifact` pages the payload back in
+slices), and the in-memory CRM simulator (~30 Maple-shaped tools, deterministic seed, deliberate
+quirks, outbox-only sends, reset/snapshot). Chat now serves the simulator's tools through the policy
+engine with artifacts enabled — the M2 gate demos (deny pattern blocks a delete call, a 270 KB+
+automation list is handled as an artifact, sends land in the outbox) run end to end in the browser.
+Next up: M3 — subagents, planner, write coordinator.
 
 ## Setup
 
@@ -72,6 +75,8 @@ src/
                 Owner-mode and unattended rules, allow/deny globs
     tools/      tool registry (server sync, model listing, scoped() views), class inference
                 and glob matching for scopes and allow/deny lists
+    simulator/  in-memory CRM: seeded leads/contacts/branches/automations/conversations, ~30
+                Maple-shaped tools, quirk switches, outbox-only sends, reset/snapshot/restore
   scripts/      demo-mcp-server.mjs — bundled stdio MCP demo server (sample tools, not Maple)
   (policy, planner, coordinator, routines, skills arrive with their milestones)
 ```
@@ -128,16 +133,19 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
   `pnpm dev` and tests but cannot run on Vercel's serverless functions — HTTP/SSE servers are the
   deployable path (see D1/D2). The bundled demo tools are samples, not the real Maple CRM, and the
   preconfigured "Maple CRM" entry is a disabled placeholder pointing at `crm.maple.example`.
-- **Policy and scoping are core-only so far.** The engine decides and the loop enforces it
-  (deny → a model-visible "Denied by policy" result, ask → blocked unless an approver is wired),
-  but the chat route exposes no tools yet, so nothing in the UI exercises policy — that lands with
-  the CRM simulator. There is no interactive approval card for `ask` yet (Owner mode on keeps
-  live-effect `auto`, so chat rarely hits `ask`), and `registry.scoped()` has no consumer until
-  agent files arrive in M4.
+- **Policy is enforced but not yet approvable from the UI.** The chat route serves the simulator's
+  tools through the policy engine (deny → a model-visible "Denied by policy" result; ask → blocked
+  with the reason until an approver is wired). Owner mode (shell toggle, on by default) is the only
+  gate today: with it off, live-effect calls become ask and are blocked. There is no interactive
+  approval card for `ask` yet, and `registry.scoped()` has no consumer until agent files arrive in M4.
+- **The CRM simulator is a deliberate subset.** ~30 tools covering the M2 gate paths; there are no
+  delete tools in the simulator at all (the deny demo has the model propose one anyway, and policy
+  stops it before execution). Data is in-memory and seeded per process; quirks are switchable in
+  core but not yet from the UI or Test Lab. The "Maple CRM" MCP entry remains a disabled placeholder.
 - **Artifacts are in-memory and per-process.** The store lives for the life of the server, so a
   handle read after a restart reports "unknown handle" in plain language; there is no LRU cap or
-  persistence yet (storage milestone). Chat does not enable artifacts because it still exposes no
-  tools — the path is proven in tests, including a 270 KB payload.
+  persistence yet (storage milestone). Chat enables artifacts, but handles only survive while the
+  dev server process lives.
 - **Agents, Skills, Loops, Providers, Runs, Test Lab and Settings routes are placeholders**
   (each states the milestone it arrives in). Chat/, MCP and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler

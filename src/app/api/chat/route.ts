@@ -1,8 +1,12 @@
+import { createArtifactStore } from "@/core/artifacts/store";
 import { encodeSse } from "@/core/events/sse";
-import { DEMO_MODEL_CONFIG, createDemoProvider } from "@/core/providers/demo";
 import { makeRunId, runAgent } from "@/core/loop/run";
 import { errorMessage } from "@/core/loop/tools";
+import { createPolicyEngine } from "@/core/policy/engine";
+import { DEMO_MODEL_CONFIG, createDemoProvider } from "@/core/providers/demo";
 import type { Message } from "@/core/providers/types";
+import { getAppSimulator } from "@/core/simulator";
+import { inferToolClass } from "@/core/tools/classify";
 
 const MAX_MESSAGES = 200;
 const MAX_CONTENT_CHARS = 32_000;
@@ -20,6 +24,13 @@ const CHAT_SYSTEM = [
 
 /** Abort handles for runs started by this server process (dev and single-instance hosts). */
 const activeRuns = new Map<string, AbortController>();
+
+/**
+ * Artifacts live for the life of this server process (in-memory until storage
+ * lands — a known gap). One store per process keeps a handle valid across the
+ * turns of a chat session.
+ */
+const chatArtifacts = createArtifactStore();
 
 function errorResponse(error: string, status: number): Response {
   return Response.json({ error }, { status });
@@ -78,10 +89,25 @@ export async function POST(request: Request): Promise<Response> {
   const onClientAbort = () => abort.abort();
   request.signal.addEventListener("abort", onClientAbort, { once: true });
 
+  // Owner mode (default on, like the shell) gates live-effect tools to auto;
+  // with it off they resolve to ask, and with no approver wired they are
+  // blocked with the reason. Role/permission enforcement beyond Owner mode
+  // arrives with auth (M7); the session is the owner's until then.
+  const ownerMode = record.ownerMode !== false;
+  const simulator = getAppSimulator();
+  const policy = createPolicyEngine({
+    environment: "interactive",
+    ownerMode,
+    classOf: (name) => inferToolClass({ name }),
+  });
+
   const iterator = runAgent({
     model: { config: DEMO_MODEL_CONFIG, provider: createDemoProvider() },
     messages,
     system: CHAT_SYSTEM,
+    tools: simulator.tools({ role: "owner", userId: "u_owner" }),
+    policy: (name) => policy.decide(name),
+    artifacts: chatArtifacts,
     runId,
     signal: abort.signal,
     maxContextTokens: 60_000,

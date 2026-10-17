@@ -3,6 +3,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { bodyToChunks, parseTransportFrame, readSse } from "@/core/events/sse";
 import { recordSessionRun } from "@/components/shell/tokenMeter";
+import { useShell } from "@/components/shell/shellContext";
 import PromptBox from "./PromptBox";
 import {
   chatReducer,
@@ -193,6 +194,7 @@ function EmptyState() {
 export default function ChatWorkspace() {
   const [state, dispatch] = useReducer(chatReducer, undefined, initialChatState);
   const [advanced, setAdvanced] = useState(false);
+  const { ownerMode } = useShell();
   const abortRef = useRef<AbortController | null>(null);
   const runIdRef = useRef<string | null>(null);
   const stopRequestedRef = useRef(false);
@@ -224,7 +226,10 @@ export default function ChatWorkspace() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...history, { role: "user", content: text }] }),
+        body: JSON.stringify({
+          messages: [...history, { role: "user", content: text }],
+          ownerMode,
+        }),
         signal: controller.signal,
       });
 

@@ -6,6 +6,7 @@ import Rail from "./Rail";
 import SidePanel from "./SidePanel";
 import TopBar from "./TopBar";
 import { titleFor } from "./nav";
+import { ShellContext } from "./shellContext";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -44,7 +45,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           onToggleOwnerMode={() => setOwnerMode((mode) => !mode)}
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {children}
+          <ShellContext.Provider value={{ ownerMode }}>{children}</ShellContext.Provider>
         </div>
       </div>
     </div>
