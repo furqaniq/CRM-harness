@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { byteLength, createArtifactStore } from "../artifacts/store";
 import { MOCK_MODEL } from "../models/config";
 import { createMockProvider, type MockScriptStep } from "../providers/mock";
 import type { ChatProvider, Message, ModelConfig, ModelPricing, ProviderEvent } from "../providers/types";
@@ -716,5 +717,98 @@ describe("runAgent — policy enforcement", () => {
     const start = events.find((event) => event.type === "tool_start");
     expect(start?.type === "tool_start" && start.policy).toBeUndefined();
     expect(resultContent(events).isError).toBe(false);
+  });
+});
+
+describe("runAgent — large results (artifacts)", () => {
+  function callThenAnswer(name: string, args: string): MockScriptStep[][] {
+    return [
+      [
+        { type: "tool_call", toolCall: { id: "c1", name, arguments: args } },
+        { type: "done", stop: "tool_calls" },
+      ],
+      [{ type: "text", text: "summarised" }, { type: "done", stop: "end" }],
+    ];
+  }
+
+  it("stores a 270 KB result as an artifact and keeps only the summary in context", async () => {
+    const items = Array.from({ length: 900 }, (_, i) => ({
+      id: `auto_${i}`,
+      name: `Automation number ${i}`,
+      schedule: `every weekday at 09:00 for the whole pipeline row ${i}`.padEnd(300, "."),
+    }));
+    const payload = JSON.stringify(items);
+    expect(byteLength(payload)).toBeGreaterThan(270 * 1024);
+
+    const store = createArtifactStore();
+    const list = tool("automation_list", () => payload);
+    const model = scriptedModel("mock", callThenAnswer("automation_list", "{}"));
+
+    const { events, summary } = await collectRun({
+      model,
+      messages: [user("list automations")],
+      tools: [list],
+      artifacts: store,
+    });
+
+    const result = events.find((event) => event.type === "tool_result");
+    if (result?.type !== "tool_result") throw new Error("expected a tool_result");
+    expect(result.isError).toBe(false);
+    expect(result.artifact).toMatchObject({ itemCount: 900, bytes: byteLength(payload) });
+    expect(result.content).toContain("Large result stored as artifact");
+    expect(result.content).toContain("900 items");
+    expect(result.content).toContain("read_artifact");
+    expect(result.content.length).toBeLessThan(2_000);
+    expect(result.content).not.toContain("Automation number 450");
+
+    // The model's context got the summary; the payload lives in the store.
+    const toolMessage = summary.messages.find((message) => message.role === "tool");
+    expect(toolMessage?.role === "tool" && toolMessage.content).toBe(result.content);
+    if (!result.artifact) throw new Error("expected artifact info on the tool_result");
+    expect(store.get(result.artifact.id)?.content).toBe(payload);
+  });
+
+  it("adds read_artifact to the run without the caller passing it", async () => {
+    const store = createArtifactStore();
+    const handle = store.create({
+      content: "four score and seven years ago",
+      summary: "text",
+      sourceTool: "something_big",
+    });
+    const model = scriptedModel(
+      "mock",
+      callThenAnswer("read_artifact", JSON.stringify({ handle: handle.id, offset: 0, limit: 10 })),
+    );
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("read the artifact")],
+      artifacts: store,
+    });
+
+    const result = events.find((event) => event.type === "tool_result");
+    if (result?.type !== "tool_result") throw new Error("expected a tool_result");
+    expect(result.isError).toBe(false);
+    expect(result.content).toContain("four score");
+    expect(result.content).toContain("nextOffset");
+  });
+
+  it("leaves results at or under the threshold alone", async () => {
+    const store = createArtifactStore();
+    const search = tool("lead_search", () => [{ id: "L-1", name: "Ada" }]);
+    const model = scriptedModel("mock", callThenAnswer("lead_search", "{}"));
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("find Ada")],
+      tools: [search],
+      artifacts: store,
+    });
+
+    const result = events.find((event) => event.type === "tool_result");
+    if (result?.type !== "tool_result") throw new Error("expected a tool_result");
+    expect(result.artifact).toBeUndefined();
+    expect(result.content).toBe('[{"id":"L-1","name":"Ada"}]');
+    expect(store.count()).toBe(0);
   });
 });

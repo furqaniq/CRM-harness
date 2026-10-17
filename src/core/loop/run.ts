@@ -1,3 +1,9 @@
+import {
+  READ_ARTIFACT_TOOL_NAME,
+  artifactizeResult,
+  type ArtifactStore,
+} from "../artifacts/store";
+import { readArtifactTool } from "../artifacts/tool";
 import { costUsd } from "../models/config";
 import type { ChatRequest, Message, StopReason, TokenUsage, ToolCall } from "../providers/types";
 import { assembleRequest } from "./context";
@@ -46,6 +52,11 @@ export interface RunOptions {
   policy?: ToolPolicy;
   /** Answers "ask" decisions; without one, ask resolves to a blocked call. */
   approve?: (request: ToolApprovalRequest) => MaybePromise<boolean>;
+  /**
+   * Stores tool results over the artifact threshold (20 KB) and hands the
+   * model a summary plus handle instead; also adds the read_artifact tool.
+   */
+  artifacts?: ArtifactStore;
   limits?: Partial<RunLimits>;
   temperature?: number;
   /** Output cap for a single model call (distinct from the run token budget). */
@@ -84,6 +95,7 @@ interface ToolOutcome {
   content: string;
   isError: boolean;
   durationMs: number;
+  artifact?: { id: string; bytes: number; summary: string; itemCount?: number };
 }
 
 /**
@@ -99,6 +111,9 @@ export async function* runAgent(options: RunOptions): AsyncGenerator<LoopEvent, 
   const base = parentRunId !== undefined ? { runId, parentRunId } : { runId };
   const limits: RunLimits = { ...DEFAULT_RUN_LIMITS, ...options.limits };
   const tools = buildToolMap(options.tools);
+  if (options.artifacts !== undefined && !tools.has(READ_ARTIFACT_TOOL_NAME)) {
+    tools.set(READ_ARTIFACT_TOOL_NAME, readArtifactTool(options.artifacts));
+  }
   const toolDefinitions = [...tools.values()].map((tool) => tool.definition);
   const candidates: LoopModel[] = [options.model, ...(options.fallbacks ?? [])];
 
@@ -384,9 +399,33 @@ export async function* runAgent(options: RunOptions): AsyncGenerator<LoopEvent, 
                 { id: item.call.id, name: item.call.name },
               ),
             );
+            const raw = toToolContent(output);
+            const handled =
+              options.artifacts !== undefined
+                ? artifactizeResult(options.artifacts, {
+                    content: raw,
+                    toolName: item.call.name,
+                    runId,
+                  })
+                : null;
+            if (handled !== null) {
+              const { handle } = handled;
+              return {
+                call: item.call,
+                content: handled.message,
+                isError: false,
+                durationMs: duration(),
+                artifact: {
+                  id: handle.id,
+                  bytes: handle.bytes,
+                  summary: handle.summary,
+                  ...(handle.itemCount !== undefined ? { itemCount: handle.itemCount } : {}),
+                },
+              };
+            }
             return {
               call: item.call,
-              content: toToolContent(output),
+              content: raw,
               isError: false,
               durationMs: duration(),
             };
@@ -426,6 +465,7 @@ export async function* runAgent(options: RunOptions): AsyncGenerator<LoopEvent, 
             content: outcome.content,
             isError: outcome.isError,
             durationMs: outcome.durationMs,
+            ...(outcome.artifact !== undefined ? { artifact: outcome.artifact } : {}),
           };
           messages.push({
             role: "tool",

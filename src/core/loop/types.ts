@@ -103,6 +103,8 @@ export type LoopEvent = LoopEventBase &
         content: string;
         isError: boolean;
         durationMs: number;
+        /** Present when the payload was stored as an artifact (content is then only the summary). */
+        artifact?: { id: string; bytes: number; summary: string; itemCount?: number };
       }
     | {
         type: "usage";

@@ -15,15 +15,17 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0 and M1 complete; M2 in progress (S6 and S7 done).** Implemented so far: scaffold,
+**Status: M0 and M1 complete; M2 in progress (S6–S8 done).** Implemented so far: scaffold,
 design tokens, app shell, CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible /
 scripted demo model), the core agent loop, the streaming chat (`POST /api/chat` runs the loop and
 streams SSE frames that the browser renders as text, step traces and token/cost usage, with Stop
 cancelling a run mid-flight), the MCP layer (stdio / streamable-HTTP / legacy-SSE transports,
 handshake + tool discovery, classing, the tool registry, and the `/mcp` workspace backed by
-`POST /api/mcp`), and the policy engine: global deny pattern, per-scope auto/ask/deny by tool
-class with Owner-mode and unattended rules, glob allow/deny lists, and agent tool scoping. Next up:
-the rest of M2 (large-result artifacts, CRM simulator).
+`POST /api/mcp`), the policy engine (global deny pattern, per-scope auto/ask/deny by tool class
+with Owner-mode and unattended rules, glob allow/deny lists, agent tool scoping), and large-result
+artifacts (20 KB threshold; over that, the model gets a summary with the exact item count plus a
+handle, and `read_artifact` pages the payload back in slices). Next up: the CRM simulator, which
+finishes M2.
 
 ## Setup
 
@@ -60,7 +62,10 @@ src/
     models/     model configs, roles, fallback chains, token and cost accounting
     events/     SSE encode/decode shared by the route and the browser
     loop/       agent loop: context assembly, streaming, parallel tool calls, limits, cancellation,
-                policy consulted before every tool call (deny blocks, ask waits for an approver)
+                policy consulted before every tool call (deny blocks, ask waits for an approver),
+                artifactization of oversized tool results
+    artifacts/  large-result artifacts: 20 KB threshold, store + summary with exact item counts,
+                read_artifact tool that pages payloads back in slices
     mcp/        MCP client: JSON-RPC channel, stdio/HTTP/legacy-SSE transports, handshake,
                 tool discovery, manager with statuses/rate limits, .mcp.json import, defaults
     policy/     policy engine: global deny pattern, per-scope auto/ask/deny by class,
@@ -129,6 +134,10 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
   the CRM simulator. There is no interactive approval card for `ask` yet (Owner mode on keeps
   live-effect `auto`, so chat rarely hits `ask`), and `registry.scoped()` has no consumer until
   agent files arrive in M4.
+- **Artifacts are in-memory and per-process.** The store lives for the life of the server, so a
+  handle read after a restart reports "unknown handle" in plain language; there is no LRU cap or
+  persistence yet (storage milestone). Chat does not enable artifacts because it still exposes no
+  tools — the path is proven in tests, including a 270 KB payload.
 - **Agents, Skills, Loops, Providers, Runs, Test Lab and Settings routes are placeholders**
   (each states the milestone it arrives in). Chat/, MCP and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler
