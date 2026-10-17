@@ -1,5 +1,6 @@
 import type { JsonSchema } from "../providers/types";
 import { humanizeToolName, inferToolClass, type ToolClass } from "./classify";
+import { scopeTools } from "./scope";
 import type { McpToolInfo } from "../mcp/types";
 
 export interface ToolEntry {
@@ -104,6 +105,15 @@ export class ToolRegistry {
 
   get(key: string): ToolEntry | null {
     return this.entries.get(key) ?? null;
+  }
+
+  /**
+   * This scope's tools (spec §5: an agent's "tool list (globs allowed)").
+   * Deny-pattern tools are never included — scoping keeps them out of the
+   * model's context entirely, while policy blocks them at call time too.
+   */
+  scoped(patterns: readonly string[]): ToolEntry[] {
+    return scopeTools(this.list({ enabled: true }), patterns, (entry) => entry.toolName);
   }
 
   /**

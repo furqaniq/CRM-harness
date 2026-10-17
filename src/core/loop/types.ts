@@ -1,3 +1,4 @@
+import type { PolicyDecision } from "../policy/types";
 import type {
   ChatProvider,
   Message,
@@ -51,6 +52,19 @@ export interface ToolExecutor {
   execute(args: Record<string, unknown>, ctx: ToolContext): MaybePromise<unknown>;
 }
 
+/** Policy consulted before every tool call of a run (S7). */
+export type ToolPolicy = (toolName: string) => PolicyDecision;
+
+/** What an approver is shown when policy resolves a call to "ask". */
+export interface ToolApprovalRequest {
+  runId: string;
+  stepId: number;
+  callId: string;
+  name: string;
+  input: Record<string, unknown> | null;
+  reason: string;
+}
+
 /** Every event carries the run id and, for subagents, the parent run id. */
 export interface LoopEventBase {
   runId: string;
@@ -78,6 +92,8 @@ export type LoopEvent = LoopEventBase &
         name: string;
         input: Record<string, unknown> | null;
         rawArguments: string;
+        /** Present when policy resolved this call to ask or deny (auto is not carried). */
+        policy?: { decision: "ask" | "deny"; reason: string };
       }
     | {
         type: "tool_result";

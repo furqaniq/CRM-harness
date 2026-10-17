@@ -3,7 +3,7 @@ import { MOCK_MODEL } from "../models/config";
 import { createMockProvider, type MockScriptStep } from "../providers/mock";
 import type { ChatProvider, Message, ModelConfig, ModelPricing, ProviderEvent } from "../providers/types";
 import { collectRun, runAgent, type LoopModel } from "./run";
-import type { LoopEvent, ToolExecutor } from "./types";
+import type { LoopEvent, ToolApprovalRequest, ToolExecutor } from "./types";
 
 function user(content: string): Message {
   return { role: "user", content };
@@ -530,5 +530,191 @@ describe("runAgent", () => {
     expect(seen.filter((event) => event.type === "run_start")).toHaveLength(1);
     expect(seen.filter((event) => event.type === "run_end")).toHaveLength(1);
     expect(next.value.stop).toBe("end");
+  });
+});
+
+describe("runAgent — policy enforcement", () => {
+  type Case = { name: string; args?: string };
+
+  function callThenAnswer({ name, args = "{}" }: Case): MockScriptStep[][] {
+    return [
+      [
+        { type: "tool_call", toolCall: { id: "c1", name, arguments: args } },
+        { type: "done", stop: "tool_calls" },
+      ],
+      [{ type: "text", text: "handled" }, { type: "done", stop: "end" }],
+    ];
+  }
+
+  function resultContent(events: LoopEvent[]): { content: string; isError: boolean } {
+    const result = events.find((event) => event.type === "tool_result");
+    if (result?.type !== "tool_result") throw new Error("expected a tool_result event");
+    return { content: result.content, isError: result.isError };
+  }
+
+  it("does not run a denied tool and gives the model the reason", async () => {
+    let executed = 0;
+    const send = tool("send_email", () => {
+      executed += 1;
+      return "queued";
+    });
+    const model = scriptedModel("mock", callThenAnswer({ name: "send_email" }));
+
+    const { events, summary } = await collectRun({
+      model,
+      messages: [user("email Ada")],
+      tools: [send],
+      policy: (name) =>
+        name === "send_email"
+          ? {
+              decision: "deny",
+              rule: "deny-list",
+              reason: "This tool is on the policy's deny list.",
+            }
+          : { decision: "auto", rule: "class-default", reason: "fine by default" },
+    });
+
+    expect(executed).toBe(0);
+    const start = events.find((event) => event.type === "tool_start");
+    expect(start?.type === "tool_start" && start.policy).toEqual({
+      decision: "deny",
+      reason: "This tool is on the policy's deny list.",
+    });
+    const result = resultContent(events);
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("Denied by policy: This tool is on the policy's deny list.");
+    expect(result.content).toContain("The tool was not run.");
+    expect(summary.stop).toBe("end");
+    expect(summary.finalText).toBe("handled");
+  });
+
+  it("blocks an ask when no approver is connected", async () => {
+    let executed = 0;
+    const send = tool("send_email", () => {
+      executed += 1;
+      return "queued";
+    });
+    const model = scriptedModel("mock", callThenAnswer({ name: "send_email" }));
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("email Ada")],
+      tools: [send],
+      policy: () => ({
+        decision: "ask",
+        rule: "class-default",
+        reason: "Live-effect actions need approval.",
+      }),
+    });
+
+    expect(executed).toBe(0);
+    const result = resultContent(events);
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("Blocked, approval needed");
+    expect(result.content).toContain("No approver is connected");
+  });
+
+  it("runs an ask the approver accepts, with the request it was shown", async () => {
+    let executed = 0;
+    const send = tool("send_email", () => {
+      executed += 1;
+      return "queued";
+    });
+    const model = scriptedModel("mock", callThenAnswer({ name: "send_email", args: '{"to":"ada@example.test"}' }));
+    const seen: ToolApprovalRequest[] = [];
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("email Ada")],
+      tools: [send],
+      runId: "run_ask",
+      policy: () => ({
+        decision: "ask",
+        rule: "class-default",
+        reason: "Live-effect actions need approval.",
+      }),
+      approve: (request) => {
+        seen.push(request);
+        return true;
+      },
+    });
+
+    expect(executed).toBe(1);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      runId: "run_ask",
+      stepId: 1,
+      callId: "c1",
+      name: "send_email",
+      input: { to: "ada@example.test" },
+      reason: "Live-effect actions need approval.",
+    });
+    const start = events.find((event) => event.type === "tool_start");
+    expect(start?.type === "tool_start" && start.policy?.decision).toBe("ask");
+    const result = resultContent(events);
+    expect(result.isError).toBe(false);
+    expect(result.content).toBe("queued");
+  });
+
+  it("blocks an ask the approver refuses", async () => {
+    let executed = 0;
+    const send = tool("send_email", () => {
+      executed += 1;
+      return "queued";
+    });
+    const model = scriptedModel("mock", callThenAnswer({ name: "send_email" }));
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("email Ada")],
+      tools: [send],
+      policy: () => ({ decision: "ask", rule: "class-default", reason: "needs a yes" }),
+      approve: () => false,
+    });
+
+    expect(executed).toBe(0);
+    const result = resultContent(events);
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("Blocked, not approved: needs a yes");
+  });
+
+  it("blocks an ask whose approval itself fails", async () => {
+    let executed = 0;
+    const send = tool("send_email", () => {
+      executed += 1;
+      return "queued";
+    });
+    const model = scriptedModel("mock", callThenAnswer({ name: "send_email" }));
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("email Ada")],
+      tools: [send],
+      policy: () => ({ decision: "ask", rule: "class-default", reason: "needs a yes" }),
+      approve: () => {
+        throw new Error("approver offline");
+      },
+    });
+
+    expect(executed).toBe(0);
+    const result = resultContent(events);
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("Approval failed: approver offline");
+  });
+
+  it("carries no policy field when policy resolves to auto", async () => {
+    const search = tool("lead_search", () => ({ leads: [] }));
+    const model = scriptedModel("mock", callThenAnswer({ name: "lead_search" }));
+
+    const { events } = await collectRun({
+      model,
+      messages: [user("list leads")],
+      tools: [search],
+      policy: () => ({ decision: "auto", rule: "class-default", reason: "read tools are auto" }),
+    });
+
+    const start = events.find((event) => event.type === "tool_start");
+    expect(start?.type === "tool_start" && start.policy).toBeUndefined();
+    expect(resultContent(events).isError).toBe(false);
   });
 });

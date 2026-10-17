@@ -132,6 +132,15 @@ export function inferToolClass(input: ClassifyInput): ToolClass {
   return "live-effect";
 }
 
+/**
+ * The spec's global deny pattern, tested against the tool *name* only: a name
+ * containing delete, remove, archive, destroy or merge is denied everywhere,
+ * beating every allow list (and is kept out of every agent's tool scope).
+ */
+export function matchesDenyPattern(name: string): boolean {
+  return tokensOf(name).some((word) => (DENY_WORDS as readonly string[]).includes(word));
+}
+
 /** "lead_search" -> "Lead search" for display labels and empty label fields. */
 export function humanizeToolName(name: string): string {
   const words = name

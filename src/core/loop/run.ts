@@ -13,10 +13,13 @@ import {
   type LimitKind,
   type LoopEvent,
   type LoopModel,
+  type MaybePromise,
   type RunLimits,
   type RunStop,
   type RunSummary,
+  type ToolApprovalRequest,
   type ToolExecutor,
+  type ToolPolicy,
 } from "./types";
 
 export type {
@@ -26,8 +29,10 @@ export type {
   RunLimits,
   RunStop,
   RunSummary,
+  ToolApprovalRequest,
   ToolContext,
   ToolExecutor,
+  ToolPolicy,
 } from "./types";
 
 export interface RunOptions {
@@ -37,6 +42,10 @@ export interface RunOptions {
   messages: Message[];
   system?: string;
   tools?: ToolExecutor[];
+  /** Policy consulted before every tool call; without it, every call runs. */
+  policy?: ToolPolicy;
+  /** Answers "ask" decisions; without one, ask resolves to a blocked call. */
+  approve?: (request: ToolApprovalRequest) => MaybePromise<boolean>;
   limits?: Partial<RunLimits>;
   temperature?: number;
   /** Output cap for a single model call (distinct from the run token budget). */
@@ -280,6 +289,7 @@ export async function* runAgent(options: RunOptions): AsyncGenerator<LoopEvent, 
         const prepared = calls.map((call) => ({
           call,
           parsed: parseArguments(call.arguments),
+          decision: options.policy?.(call.name),
         }));
         for (const item of prepared) {
           yield {
@@ -290,12 +300,60 @@ export async function* runAgent(options: RunOptions): AsyncGenerator<LoopEvent, 
             name: item.call.name,
             input: item.parsed.ok ? item.parsed.value : null,
             rawArguments: item.call.arguments,
+            ...(item.decision !== undefined && item.decision.decision !== "auto"
+              ? { policy: { decision: item.decision.decision, reason: item.decision.reason } }
+              : {}),
           };
         }
 
         const executions = prepared.map(async (item): Promise<ToolOutcome> => {
           const toolStarted = now();
           const duration = () => Math.max(0, now() - toolStarted);
+          const decision = item.decision;
+          if (decision?.decision === "deny") {
+            return {
+              call: item.call,
+              content: `Denied by policy: ${decision.reason} The tool was not run.`,
+              isError: true,
+              durationMs: duration(),
+            };
+          }
+          if (decision?.decision === "ask") {
+            if (!options.approve) {
+              return {
+                call: item.call,
+                content: `Blocked, approval needed: ${decision.reason} No approver is connected, so the tool was not run.`,
+                isError: true,
+                durationMs: duration(),
+              };
+            }
+            let approved = false;
+            try {
+              approved = await options.approve({
+                runId,
+                stepId,
+                callId: item.call.id,
+                name: item.call.name,
+                input: item.parsed.ok ? item.parsed.value : null,
+                reason: decision.reason,
+              });
+            } catch (error) {
+              return {
+                call: item.call,
+                content: `Approval failed: ${errorMessage(error)} The tool was not run.`,
+                isError: true,
+                durationMs: duration(),
+              };
+            }
+            if (!approved) {
+              return {
+                call: item.call,
+                content: `Blocked, not approved: ${decision.reason} The tool was not run.`,
+                isError: true,
+                durationMs: duration(),
+              };
+            }
+          }
           const executor: ToolExecutor | undefined = tools.get(item.call.name);
           if (!executor) {
             return {

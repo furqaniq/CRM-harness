@@ -15,13 +15,15 @@ Stack and step-by-step plan: [`plan.md`](./plan.md). Progress: [`spine.md`](./sp
 - **Vitest** for unit tests.
 - Provider-agnostic: Anthropic, OpenAI, Gemini, any OpenAI-compatible endpoint.
 
-**Status: M0 and M1 complete; M2 in progress (S6 done).** Implemented so far: scaffold, design
-tokens, app shell, CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible /
+**Status: M0 and M1 complete; M2 in progress (S6 and S7 done).** Implemented so far: scaffold,
+design tokens, app shell, CI, provider abstraction (Anthropic / OpenAI / Gemini / OpenAI-compatible /
 scripted demo model), the core agent loop, the streaming chat (`POST /api/chat` runs the loop and
 streams SSE frames that the browser renders as text, step traces and token/cost usage, with Stop
-cancelling a run mid-flight), and the MCP layer: stdio / streamable-HTTP / legacy-SSE transports,
+cancelling a run mid-flight), the MCP layer (stdio / streamable-HTTP / legacy-SSE transports,
 handshake + tool discovery, classing, the tool registry, and the `/mcp` workspace backed by
-`POST /api/mcp`. Next up: the rest of M2 (policy engine, large-result artifacts, CRM simulator).
+`POST /api/mcp`), and the policy engine: global deny pattern, per-scope auto/ask/deny by tool
+class with Owner-mode and unattended rules, glob allow/deny lists, and agent tool scoping. Next up:
+the rest of M2 (large-result artifacts, CRM simulator).
 
 ## Setup
 
@@ -57,10 +59,14 @@ src/
     providers/  neutral chat types, Anthropic + OpenAI SSE adapters, provider registry, scripted demo model
     models/     model configs, roles, fallback chains, token and cost accounting
     events/     SSE encode/decode shared by the route and the browser
-    loop/       agent loop: context assembly, streaming, parallel tool calls, limits, cancellation
+    loop/       agent loop: context assembly, streaming, parallel tool calls, limits, cancellation,
+                policy consulted before every tool call (deny blocks, ask waits for an approver)
     mcp/        MCP client: JSON-RPC channel, stdio/HTTP/legacy-SSE transports, handshake,
                 tool discovery, manager with statuses/rate limits, .mcp.json import, defaults
-    tools/      tool registry (server sync, model listing, name collisions) + class inference
+    policy/     policy engine: global deny pattern, per-scope auto/ask/deny by class,
+                Owner-mode and unattended rules, allow/deny globs
+    tools/      tool registry (server sync, model listing, scoped() views), class inference
+                and glob matching for scopes and allow/deny lists
   scripts/      demo-mcp-server.mjs — bundled stdio MCP demo server (sample tools, not Maple)
   (policy, planner, coordinator, routines, skills arrive with their milestones)
 ```
@@ -117,6 +123,12 @@ The full step list lives in [`plan.md`](./plan.md) and is tracked in [`spine.md`
   `pnpm dev` and tests but cannot run on Vercel's serverless functions — HTTP/SSE servers are the
   deployable path (see D1/D2). The bundled demo tools are samples, not the real Maple CRM, and the
   preconfigured "Maple CRM" entry is a disabled placeholder pointing at `crm.maple.example`.
+- **Policy and scoping are core-only so far.** The engine decides and the loop enforces it
+  (deny → a model-visible "Denied by policy" result, ask → blocked unless an approver is wired),
+  but the chat route exposes no tools yet, so nothing in the UI exercises policy — that lands with
+  the CRM simulator. There is no interactive approval card for `ask` yet (Owner mode on keeps
+  live-effect `auto`, so chat rarely hits `ask`), and `registry.scoped()` has no consumer until
+  agent files arrive in M4.
 - **Agents, Skills, Loops, Providers, Runs, Test Lab and Settings routes are placeholders**
   (each states the milestone it arrives in). Chat/, MCP and the shell are live.
 - **Vercel vs. long-running work.** The interactive harness will deploy to Vercel. The scheduler
