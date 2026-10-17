@@ -209,6 +209,12 @@ const TOOL_RULES: DemoToolRule[] = [
     alwaysPropose: true,
   },
   {
+    // Skills load on demand: the body is not in the prompt, only the catalog.
+    match: /\buse\s+(?:the\s+)?([a-z0-9][a-z0-9-]*)\s+skill\b/i,
+    tool: "read_skill",
+    args: (prompt) => ({ name: skillNameFrom(prompt) }),
+  },
+  {
     match: /\b(?:in parallel|simultaneously|side by side|at the same time|two agents)\b/i,
     tool: "spawn_agents",
     args: () => ({
@@ -324,6 +330,11 @@ function extractQuery(prompt: string): string {
   return "";
 }
 
+/** "use the never-delete skill" → "never-delete". */
+function skillNameFrom(prompt: string): string {
+  return prompt.match(/\buse\s+(?:the\s+)?([a-z0-9][a-z0-9-]*)\s+skill\b/i)?.[1] ?? "";
+}
+
 /** "Create a lead named Ada Harness" → "Ada Harness"; a plain fallback otherwise. */
 function extractLeadName(prompt: string): string {
   const named = prompt.match(/\b(?:named|called)\s+(.{1,60}?)(?:\?|\.|,|$)/i);
@@ -376,6 +387,12 @@ function toolFollowUpChunks(content: string, isError: boolean): string[] {
         return [
           `Here is that slice — ${record.returnedChars} characters, straight from the artifact.`,
           more,
+        ];
+      }
+      if (typeof record.skill === "string" && typeof record.body === "string") {
+        return [
+          `Loaded the "${record.skill}" skill — ${record.body.length} characters of guidance are now in context. `,
+          "The body is in the trace above; a real model would follow it from here.",
         ];
       }
       if (typeof record.count === "number") {

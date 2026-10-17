@@ -12,6 +12,12 @@ import { createPolicyEngine } from "@/core/policy/engine";
 import { DEMO_MODEL_CONFIG, createDemoProvider } from "@/core/providers/demo";
 import type { Message } from "@/core/providers/types";
 import { getAppSimulator } from "@/core/simulator";
+import {
+  buildReadSkillTool,
+  catalogPrompt,
+  getAppSkillStore,
+  type SkillEntry,
+} from "@/core/skills";
 import { inferToolClass } from "@/core/tools/classify";
 
 const MAX_MESSAGES = 200;
@@ -120,6 +126,16 @@ export async function POST(request: Request): Promise<Response> {
     classOf: (name) => inferToolClass({ name }),
   });
 
+  // Skills: only names and descriptions go into the prompt (spec §6); bodies
+  // are loaded on demand with the read_skill tool. A read failure just means
+  // this turn runs without a catalog — chat does not depend on the folder.
+  let skills: SkillEntry[] = [];
+  try {
+    skills = (await getAppSkillStore().list()).filter((skill) => skill.valid);
+  } catch {
+    skills = [];
+  }
+
   // Every simulator tool runs through the write coordinator: per-record
   // locking, in-flight idempotency, the 10-minute identical-send guard and
   // read-after-write verification — for the root run and for children alike,
@@ -146,8 +162,14 @@ export async function POST(request: Request): Promise<Response> {
   const iterator = runAgent({
     model: { config: DEMO_MODEL_CONFIG, provider: createDemoProvider() },
     messages,
-    system: CHAT_SYSTEM,
-    tools: [...buildSpawnTools({ agents: INTERIM_AGENTS, context: spawnContext }), ...allTools],
+    system: skills.length > 0 ? `${CHAT_SYSTEM}\n\n${catalogPrompt(skills)}` : CHAT_SYSTEM,
+    tools: [
+      ...buildSpawnTools({ agents: INTERIM_AGENTS, context: spawnContext }),
+      ...allTools,
+      ...(skills.length > 0
+        ? [buildReadSkillTool((name) => getAppSkillStore().get(name))]
+        : []),
+    ],
     policy: (name) => policy.decide(name),
     artifacts: chatArtifacts,
     runId,
