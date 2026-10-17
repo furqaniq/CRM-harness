@@ -15,8 +15,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 | S4 | Core agent loop (stream, parallel tools, limits, cancel) | [x] | `6a83c9d` | yes |
 | S5 | Streaming chat UI, glowing prompt box, stop, token meter | [x] | `7f10429` | yes |
 | S6 | MCP manager (stdio/HTTP/SSE) + tool registry | [x] | `2849ddb` | yes |
-| S7 | Policy engine + tool scoping | [x] | `235df2f` | pending |
-| S8 | Large-result artifacts | [ ] | | |
+| S7 | Policy engine + tool scoping | [x] | `235df2f` | yes |
+| S8 | Large-result artifacts | [x] | `34009a4` | pending |
 | S9 | CRM simulator (data, quirks, outbox, reset/snapshot) | [ ] | | |
 | S10 | Subagent runner (spawn_agent/spawn_agents) | [ ] | | |
 | S11 | Planner (task graph, parallel fanout, failure isolation) | [ ] | | |
@@ -44,7 +44,8 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
 - [x] M1 complete — provider tested against an injected fetch, chat streams over SSE, stop mid-run works, token meter tracks real usage; scripted demo model (`docs/m1-chat.png`, `docs/m1-chat-mobile.png`)
 - [ ] M2 complete — simulator (S9); remote MCP server connect done with S6 (stdio/HTTP/SSE
   transports tested end-to-end); deny pattern blocks delete tools (enforced in core by S7 — the
-  gate still needs an end-to-end demo in chat); 270 KB result handled (S8)
+  gate still needs an end-to-end demo in chat); 270 KB result handled (done in core by S8 — the
+  gate still needs a chat demo once the simulator supplies the tool)
 - [ ] M3 complete — parallel lanes in one step; one-record create; read-after-write; pass rates
 - [ ] M4 complete — all seed files load/validate; `/skill` and `@agent` work
 - [ ] M5 complete — seed routines run; unattended cannot live-effect; overlap/missed-run tested
@@ -141,3 +142,16 @@ Full plan: `plan.md`. Source of truth: `maple_harness_spec.html`.
   (`pnpm verify`). Known gap recorded: chat exposes no tools yet, so policy has no UI demo until
   the simulator step; the M2 gate demo needs chat to serve registry tools and the demo model to
   script tool calls. S8 (large-result artifacts) next.
+- S8 done (`34009a4`): large-result artifacts. `src/core/artifacts/` stores any tool result over
+  the spec's 20 KB threshold (§11) and replaces it in context with a short message: handle, size,
+  an exact item count when the payload is a list, a 300-character preview, and the note that the
+  full payload is not in context. `read_artifact` pages a stored payload back in slices (8 KB
+  default window, 20 KB max, plain-language errors for unknown handles). The loop gained
+  `RunOptions.artifacts`: over-threshold results are stored, `tool_result` carries
+  `{ id, bytes, summary, itemCount }` for the UI, and `read_artifact` is added to the run
+  automatically when a store is present. Proven with a 270 KB automation list (the simulator's
+  known 270 KB quirk) kept out of context while remaining readable. 210 tests green
+  (`pnpm verify`). Known gaps: store is in-memory per process (handles die with a restart, no
+  persistence until storage); chat still exposes no tools, so the gate's chat demo waits on S9.
+  S9 (CRM simulator) next — it closes M2 once chat serves registry tools through policy and the
+  demo model can script tool calls for the gate demo.
